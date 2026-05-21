@@ -51,12 +51,7 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Load Lucide Icons
   lucide.createIcons();
 
-  // Load API Key from environment variables or local storage if saved
-  const envKey = import.meta.env.VITE_GEMINI_API_KEY;
-  const savedKey = envKey || localStorage.getItem('monstah_gemini_key');
-  if (savedKey) {
-    document.getElementById('ai-api-key').value = savedKey;
-  }
+
 });
 
 // Window resize adjust
@@ -617,55 +612,20 @@ function initRecorderControls() {
 
 // 6. Google Gemini AI integration panel script polishing
 function initGeminiAssistant() {
-  const apiKeyInput = document.getElementById('ai-api-key');
-  const toggleKeyView = document.getElementById('btn-toggle-key-view');
-  const saveKeyBtn = document.getElementById('btn-save-api-key');
-  const deleteKeyBtn = document.getElementById('btn-delete-api-key');
   const toneSelect = document.getElementById('ai-polish-tone');
   const polishBtn = document.getElementById('btn-ai-polish');
   const editor = document.getElementById('script-editor');
 
-  // Toggle visible characters
-  toggleKeyView.addEventListener('click', () => {
-    const isPass = apiKeyInput.type === 'password';
-    apiKeyInput.type = isPass ? 'text' : 'password';
-    toggleKeyView.querySelector('i').setAttribute('data-lucide', isPass ? 'eye-off' : 'eye');
-    lucide.createIcons();
-  });
-
-  // Explicit Save Key
-  saveKeyBtn.addEventListener('click', () => {
-    const key = apiKeyInput.value.trim();
-    if (!key) {
-      alert('Please enter a key before saving.');
-      return;
-    }
-    localStorage.setItem('monstah_gemini_key', key);
-    alert('Google Gemini API Key has been saved locally!');
-  });
-
-  // Explicit Clear Key
-  deleteKeyBtn.addEventListener('click', () => {
-    if (confirm('Clear your saved Google Gemini API Key?')) {
-      apiKeyInput.value = '';
-      localStorage.removeItem('monstah_gemini_key');
-      alert('Google Gemini API Key has been cleared!');
-    }
-  });
-
   // Call Gemini REST polisher
   polishBtn.addEventListener('click', async () => {
-    const key = apiKeyInput.value.trim();
+    const key = import.meta.env.VITE_GEMINI_API_KEY || localStorage.getItem('monstah_gemini_key') || '';
     const script = editor.value.trim();
     const tone = toneSelect.value;
 
     if (!key) {
-      alert('Please enter your Google Gemini API Key. You can get one for free at Google AI Studio.');
+      alert('Google Gemini API Key is missing! Please configure VITE_GEMINI_API_KEY in your .env.local file or Vercel environment variables.');
       return;
     }
-
-    // Save key in localStorage
-    localStorage.setItem('monstah_gemini_key', key);
 
     polishBtn.disabled = true;
     polishBtn.innerHTML = `<i data-lucide="loader" class="pulse"></i> Translating via AI...`;
