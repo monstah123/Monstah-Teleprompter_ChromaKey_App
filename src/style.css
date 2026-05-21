@@ -1457,15 +1457,22 @@ body {
   }
   
   .monitor-workspace {
+    flex: none;
     padding: 16px;
     height: auto;
-    min-height: 480px;
+    min-height: auto;
     justify-content: flex-start;
+    overflow: visible;
   }
   
   .monitor-container {
     max-height: 55vh;
     overflow: visible; /* Prevent teleprompter card clipping on smaller aspect ratios */
+  }
+
+  .quick-status-bar {
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--border-color);
   }
 
   .teleprompter-card {
@@ -1501,7 +1508,7 @@ body {
 
   .monitor-workspace {
     padding: 10px;
-    min-height: 380px;
+    min-height: auto;
   }
 
   .teleprompter-card {
@@ -1534,6 +1541,7 @@ body {
     flex-wrap: wrap;
     justify-content: center;
     padding-bottom: 12px;
+    margin-bottom: 12px;
   }
 
   .btn-record {
