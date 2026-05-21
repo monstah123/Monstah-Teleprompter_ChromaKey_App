@@ -57,7 +57,17 @@ export class SystemCaptureControl {
     }
 
     const constraints = {
-      video: cameraId ? { deviceId: { exact: cameraId } } : true,
+      video: cameraId ? { 
+        deviceId: { exact: cameraId },
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        aspectRatio: { ideal: 1.777777778 }
+      } : {
+        facingMode: "user",
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        aspectRatio: { ideal: 1.777777778 }
+      },
       audio: false // Handled separately for recording
     };
 
@@ -211,10 +221,21 @@ export class SystemCaptureControl {
 
     const outputStream = new MediaStream(combinedTracks);
 
-    // MediaRecorder mime types matching
-    let options = { mimeType: 'video/webm;codecs=vp8,opus' };
-    if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-      options = { mimeType: 'video/webm' };
+    // MediaRecorder mime types matching - supports WebM on Chrome/Firefox and native MP4 on iOS/Safari
+    let options = {};
+    const candidateTypes = [
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/mp4;codecs=avc1,mp4a.40.2',
+      'video/mp4',
+      'video/webm'
+    ];
+    
+    for (const type of candidateTypes) {
+      if (MediaRecorder.isTypeSupported(type)) {
+        options = { mimeType: type };
+        break;
+      }
     }
 
     try {
@@ -263,15 +284,18 @@ export class SystemCaptureControl {
 
   // File blob processor
   processExportedBlob() {
-    const blob = new Blob(this.recordedChunks, { type: 'video/webm' });
+    const type = this.mediaRecorder?.mimeType || 'video/webm';
+    const blob = new Blob(this.recordedChunks, { type: type });
     const videoUrl = URL.createObjectURL(blob);
     const sizeMB = (blob.size / (1024 * 1024)).toFixed(2);
+    const ext = type.includes('mp4') ? 'mp4' : 'webm';
     
     const take = {
       id: `Take_${Date.now()}`,
       url: videoUrl,
       size: `${sizeMB} MB`,
-      date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      ext: ext
     };
 
     this.recordedTakes.unshift(take); // Push to list

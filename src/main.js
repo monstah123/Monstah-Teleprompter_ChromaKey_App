@@ -546,7 +546,11 @@ function initRecorderControls() {
     // 1. Show modal preview
     previewPlayer.src = take.url;
     downloadLink.href = take.url;
-    downloadLink.setAttribute('download', `${take.id}.webm`);
+    const ext = take.ext || 'webm';
+    downloadLink.setAttribute('download', `${take.id}.${ext}`);
+    downloadLink.innerHTML = `<i data-lucide="download"></i> Download Composited Video (.${ext})`;
+    lucide.createIcons();
+    
     exportModal.style.display = 'flex';
 
     // 2. Refresh recorded takes list
@@ -580,13 +584,14 @@ function initRecorderControls() {
     recorder.recordedTakes.forEach(take => {
       const row = document.createElement('div');
       row.className = 'take-item-row';
+      const ext = take.ext || 'webm';
       row.innerHTML = `
         <div class="take-info">
           <span class="take-name">${take.id}</span>
           <span class="take-size">${take.date} • ${take.size}</span>
         </div>
         <div class="take-actions">
-          <a href="${take.url}" download="${take.id}.webm" class="take-action-btn" title="Download Take">
+          <a href="${take.url}" download="${take.id}.${ext}" class="take-action-btn" title="Download Take">
             <i data-lucide="download"></i>
           </a>
           <button class="take-action-btn take-action-btn-delete" data-id="${take.id}" title="Delete Take">
