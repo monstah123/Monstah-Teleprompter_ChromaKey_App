@@ -223,15 +223,34 @@ export class SystemCaptureControl {
 
     // MediaRecorder mime types matching - supports WebM on Chrome/Firefox and native MP4 on iOS/Safari
     let options = {};
-    const candidateTypes = [
-      'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
-      'video/mp4;codecs=avc1',
-      'video/mp4;codecs=h264',
-      'video/mp4',
+    
+    // Check Chrome / Firefox vs Safari compatibility to avoid encoder starvation/crash (e.g. Chrome lacking AAC encoder)
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    const candidateTypes = [];
+    
+    if (isSafari) {
+      candidateTypes.push(
+        'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+        'video/mp4;codecs=avc1,mp4a.40.2',
+        'video/mp4;codecs=avc1',
+        'video/mp4'
+      );
+    } else {
+      // Chrome/Firefox supports H.264 with Opus in an MP4 container stably
+      candidateTypes.push(
+        'video/mp4;codecs=avc1,opus',
+        'video/mp4;codecs=h264,opus',
+        'video/mp4;codecs=avc1',
+        'video/mp4'
+      );
+    }
+    
+    // WebM fallbacks
+    candidateTypes.push(
       'video/webm;codecs=vp9,opus',
       'video/webm;codecs=vp8,opus',
       'video/webm'
-    ];
+    );
     
     for (const type of candidateTypes) {
       if (MediaRecorder.isTypeSupported(type)) {
@@ -246,6 +265,10 @@ export class SystemCaptureControl {
       console.warn('Failed to build complex media recorder, falling back to browser default container:', e);
       this.mediaRecorder = new MediaRecorder(outputStream);
     }
+
+    this.mediaRecorder.onerror = (e) => {
+      console.error('MediaRecorder error during capture:', e);
+    };
 
     this.mediaRecorder.ondataavailable = (e) => {
       if (e.data && e.data.size > 0) {
