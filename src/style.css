@@ -354,7 +354,7 @@ body {
   overflow-y: hidden; /* Programmatic scrolling only */
   position: relative;
   display: flex;
-  align-items: center; /* Eyeline locks focus centered vertically */
+  align-items: flex-start; /* Align text block to top to prevent vertical center cutoff */
   justify-content: center;
 }
 

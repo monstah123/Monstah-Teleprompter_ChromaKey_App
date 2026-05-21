@@ -192,6 +192,9 @@ function initTeleprompterSync() {
   const clearScriptBtn = document.getElementById('btn-clear-script');
   const fileUploader = document.getElementById('file-uploader');
 
+  const scrollModeToggle = document.getElementById('scroll-mode-toggle');
+  const cardModeToggleBtn = document.getElementById('card-mode-toggle-btn');
+
   // Input editing synchronization
   editor.addEventListener('input', () => {
     teleprompter.setScriptText(editor.value);
@@ -325,6 +328,19 @@ function initTeleprompterSync() {
       cardPlayBtn.disabled = false;
     }
   });
+
+  // Scroll Mode toggle synchronization
+  if (scrollModeToggle) {
+    scrollModeToggle.addEventListener('change', () => {
+      teleprompter.setScrollMode(scrollModeToggle.checked ? 'manual' : 'auto');
+    });
+  }
+
+  if (cardModeToggleBtn) {
+    cardModeToggleBtn.addEventListener('click', () => {
+      teleprompter.setScrollMode(teleprompter.scrollMode === 'manual' ? 'auto' : 'manual');
+    });
+  }
 }
 
 // 4. Chroma Key / WebGL Studio Configurations
@@ -524,7 +540,7 @@ function initRecorderControls() {
         
         // Wait 500ms after recording begins to start autoscroll for natural pre-talk frame captures
         setTimeout(() => {
-          if (recorder.isRecording) {
+          if (recorder.isRecording && teleprompter.scrollMode === 'auto') {
             try {
               teleprompter.play();
             } catch (err) {

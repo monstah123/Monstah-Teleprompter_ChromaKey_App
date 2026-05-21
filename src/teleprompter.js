@@ -32,9 +32,12 @@ export class TeleprompterEngine {
     // Callbacks
     this.onPlayStateChange = null;
 
+    this.scrollMode = 'auto'; // 'auto' or 'manual'
+
     this.initDraggable();
     this.initResizable();
     this.applyStyles();
+    this.initManualScrolling();
   }
 
   // Set WPM Speed
@@ -86,6 +89,13 @@ export class TeleprompterEngine {
     this.textContent.style.fontSize = `${this.fontSize}px`;
     this.textContent.style.paddingLeft = `${this.padding}px`;
     this.textContent.style.paddingRight = `${this.padding}px`;
+
+    // Dynamically calculate top/bottom padding to center the script from beginning and end
+    const viewHeight = this.scrollView.offsetHeight || 200;
+    const halfHeight = Math.floor(viewHeight / 2);
+    this.textContent.style.paddingTop = `${halfHeight}px`;
+    this.textContent.style.paddingBottom = `${halfHeight}px`;
+
     this.textContent.style.fontFamily = this.fontFamily;
     this.textContent.style.textAlign = this.textAlignment;
     this.card.style.backgroundColor = `rgba(15, 15, 23, ${this.backdropOpacity})`;
@@ -210,6 +220,8 @@ export class TeleprompterEngine {
           if (this.isLockedTop) {
             this.card.style.left = `calc(50% - ${this.card.offsetWidth / 2}px)`;
           }
+
+          this.applyStyles(); // Update padding dynamically as size changes
         };
 
         const resizeMoveMouse = (ev) => resizeMove(ev.clientX, ev.clientY);
@@ -249,6 +261,98 @@ export class TeleprompterEngine {
     });
   }
 
+  initManualScrolling() {
+    // 1. Mouse wheel and trackpad scroll
+    this.scrollView.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      
+      const delta = e.deltaY;
+      this.scrollPosition = Math.max(0, this.scrollPosition + delta);
+      
+      const textHeight = this.textContent.scrollHeight;
+      const viewHeight = this.scrollView.offsetHeight;
+      const maxScroll = textHeight - viewHeight;
+      this.scrollPosition = Math.min(maxScroll, this.scrollPosition);
+      
+      this.textContent.style.transform = `translateY(-${this.scrollPosition}px)`;
+    }, { passive: false });
+
+    // 2. Touch swipe gestures for mobile manual scroll
+    let touchStartY = 0;
+    let scrollStartPos = 0;
+    
+    this.scrollView.addEventListener('touchstart', (e) => {
+      if (e.touches.length > 0) {
+        touchStartY = e.touches[0].clientY;
+        scrollStartPos = this.scrollPosition;
+      }
+    }, { passive: true });
+    
+    this.scrollView.addEventListener('touchmove', (e) => {
+      if (e.touches.length > 0) {
+        const touchY = e.touches[0].clientY;
+        const dy = touchStartY - touchY; // Swipe up moves text up
+        
+        this.scrollPosition = Math.max(0, scrollStartPos + dy);
+        
+        const textHeight = this.textContent.scrollHeight;
+        const viewHeight = this.scrollView.offsetHeight;
+        const maxScroll = textHeight - viewHeight;
+        this.scrollPosition = Math.min(maxScroll, this.scrollPosition);
+        
+        this.textContent.style.transform = `translateY(-${this.scrollPosition}px)`;
+        e.preventDefault(); // Stop entire page from swiping/scrolling
+      }
+    }, { passive: false });
+
+    // 3. Keydown arrows scroll
+    window.addEventListener('keydown', (e) => {
+      if (document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'INPUT') return;
+      
+      if (e.code === 'ArrowDown') {
+        e.preventDefault();
+        const textHeight = this.textContent.scrollHeight;
+        const viewHeight = this.scrollView.offsetHeight;
+        this.scrollPosition = Math.min(textHeight - viewHeight, this.scrollPosition + 40);
+        this.textContent.style.transform = `translateY(-${this.scrollPosition}px)`;
+      } else if (e.code === 'ArrowUp') {
+        e.preventDefault();
+        this.scrollPosition = Math.max(0, this.scrollPosition - 40);
+        this.textContent.style.transform = `translateY(-${this.scrollPosition}px)`;
+      }
+    });
+  }
+
+  setScrollMode(mode) {
+    this.scrollMode = mode;
+    
+    // Sync switch in sidebar
+    const toggle = document.getElementById('scroll-mode-toggle');
+    if (toggle) {
+      toggle.checked = (mode === 'manual');
+    }
+    
+    // Sync button on card
+    const cardModeBtn = document.getElementById('card-mode-toggle-btn');
+    const cardModeText = document.getElementById('card-mode-text');
+    const cardModeIcon = document.getElementById('card-mode-icon');
+    
+    if (cardModeBtn && cardModeText && cardModeIcon) {
+      if (mode === 'manual') {
+        cardModeText.textContent = 'Manual';
+        cardModeIcon.setAttribute('data-lucide', 'fingerprint');
+        cardModeBtn.title = 'Switch to Auto Scroll Mode';
+        cardModeBtn.classList.add('manual-mode-active');
+      } else {
+        cardModeText.textContent = 'Auto';
+        cardModeIcon.setAttribute('data-lucide', 'zap');
+        cardModeBtn.title = 'Switch to Manual Scroll Mode';
+        cardModeBtn.classList.remove('manual-mode-active');
+      }
+      lucide.createIcons();
+    }
+  }
+
   // 3. Autoscrolling Mathematical Engine
   togglePlay() {
     this.isPlaying = !this.isPlaying;
@@ -274,6 +378,7 @@ export class TeleprompterEngine {
   }
 
   resetScroll() {
+    this.applyStyles(); // Recalculate dynamic top/bottom padding for the current card size
     this.scrollPosition = 0;
     this.textContent.style.transform = `translateY(0px)`;
   }
@@ -283,6 +388,12 @@ export class TeleprompterEngine {
 
     const deltaTime = (currentTime - this.lastFrameTime) / 1000; // in seconds
     this.lastFrameTime = currentTime;
+
+    if (this.scrollMode === 'manual') {
+      // Keep play state active, but do not automatically advance scrollPosition
+      requestAnimationFrame((t) => this.scrollLoop(t));
+      return;
+    }
 
     // Robust pixels scrolled per second calculation based on WPM:
     // Speed (px/s) = (Total Text Height / Total Words) * (WPM / 60)
@@ -297,7 +408,7 @@ export class TeleprompterEngine {
 
     // View boundaries: center viewport guides
     const viewHeight = this.scrollView.offsetHeight;
-    const maxScroll = textHeight - (viewHeight / 2);
+    const maxScroll = textHeight - viewHeight;
 
     if (this.scrollPosition > maxScroll) {
       this.scrollPosition = maxScroll;

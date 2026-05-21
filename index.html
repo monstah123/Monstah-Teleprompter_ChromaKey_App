@@ -92,6 +92,9 @@
               <div class="card-play-controls">
                 <button class="card-ctrl-btn" id="card-play-btn"><i data-lucide="play"></i></button>
                 <button class="card-ctrl-btn" id="card-rewind-btn"><i data-lucide="rotate-ccw"></i></button>
+                <button class="card-ctrl-btn" id="card-mode-toggle-btn" title="Toggle Auto/Manual Scroll Mode">
+                  <i data-lucide="zap" id="card-mode-icon"></i> <span id="card-mode-text">Auto</span>
+                </button>
                 <span class="card-speed-label" id="card-speed-indicator">WPM: 120</span>
               </div>
             </div>
@@ -303,6 +306,17 @@
                   </div>
                   <input type="range" id="prompter-speed" min="80" max="300" step="5" value="120" class="slider-control" />
                   <div class="wpm-help-text">Equates to roughly 120 words per minute scroll.</div>
+                </div>
+
+                <div class="section-row mt-1">
+                  <div class="row-left">
+                    <label for="scroll-mode-toggle" class="strong-label">Manual Scroll Mode</label>
+                    <span class="input-tip">Disable autoscroll & control text manually</span>
+                  </div>
+                  <label class="switch-toggle">
+                    <input type="checkbox" id="scroll-mode-toggle" />
+                    <span class="switch-slider"></span>
+                  </label>
                 </div>
 
                 <div class="section-row mt-1">
