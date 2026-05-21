@@ -125,10 +125,18 @@ export class TeleprompterEngine {
       this.card.classList.add('dragging');
       this.dragStart = { x: clientX, y: clientY };
       
-      const style = window.getComputedStyle(this.card);
+      const rect = this.card.getBoundingClientRect();
+      const parentRect = this.card.parentElement.getBoundingClientRect();
+      const currentLeft = rect.left - parentRect.left;
+      const currentTop = rect.top - parentRect.top;
+      
+      this.card.style.left = `${currentLeft}px`;
+      this.card.style.top = `${currentTop}px`;
+      this.card.style.transform = 'none';
+      
       this.cardStart = {
-        x: parseInt(style.left, 10) || 0,
-        y: parseInt(style.top, 10) || 0
+        x: currentLeft,
+        y: currentTop
       };
     };
 
@@ -191,6 +199,14 @@ export class TeleprompterEngine {
       const handleResizeStart = (clientX, clientY) => {
         let isResizing = true;
         const isRight = handle.classList.contains('rh-bottom-right');
+        
+        if (!this.isLockedTop) {
+          const rect = this.card.getBoundingClientRect();
+          const parentRect = this.card.parentElement.getBoundingClientRect();
+          this.card.style.left = `${rect.left - parentRect.left}px`;
+          this.card.style.top = `${rect.top - parentRect.top}px`;
+          this.card.style.transform = 'none';
+        }
         
         const startWidth = this.card.offsetWidth;
         const startHeight = this.card.offsetHeight;

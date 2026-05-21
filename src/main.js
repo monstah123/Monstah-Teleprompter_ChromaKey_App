@@ -63,6 +63,12 @@ function adjustCanvasResolution() {
     compositor.canvas.width = w;
     compositor.canvas.height = h;
   }
+
+  // Synchronize dynamic preview container aspect-ratio
+  const container = document.getElementById('monitor-container');
+  if (container) {
+    container.style.aspectRatio = `${w}/${h}`;
+  }
 }
 
 window.addEventListener('resize', () => {
@@ -148,6 +154,45 @@ async function initDeviceManagement() {
   resSelect.addEventListener('change', () => {
     adjustCanvasResolution();
   });
+
+  // Aspect ratio change selection
+  const aspectSelect = document.getElementById('aspect-ratio-select');
+  if (aspectSelect) {
+    aspectSelect.addEventListener('change', () => {
+      const isVertical = aspectSelect.value === '9:16';
+      
+      // Dynamic replacement of resolutions options
+      resSelect.innerHTML = '';
+      if (isVertical) {
+        const opt1 = document.createElement('option');
+        opt1.value = '1080x1920';
+        opt1.textContent = 'Vertical Full HD (1080p, 1080 x 1920)';
+        opt1.selected = true;
+        
+        const opt2 = document.createElement('option');
+        opt2.value = '720x1280';
+        opt2.textContent = 'Vertical Standard HD (720p, 720 x 1280)';
+        
+        resSelect.appendChild(opt1);
+        resSelect.appendChild(opt2);
+      } else {
+        const opt1 = document.createElement('option');
+        opt1.value = '1920x1080';
+        opt1.textContent = 'Full HD (1080p, 1920 x 1080)';
+        
+        const opt2 = document.createElement('option');
+        opt2.value = '1280x720';
+        opt2.textContent = 'Standard HD (720p, 1280 x 720)';
+        opt2.selected = true;
+        
+        resSelect.appendChild(opt1);
+        resSelect.appendChild(opt2);
+      }
+      
+      // Propagate changes to compositor canvas and preview container
+      adjustCanvasResolution();
+    });
+  }
 
   // Auto trigger default devices immediately for rapid feedback
   if (cameras.length > 0) {
