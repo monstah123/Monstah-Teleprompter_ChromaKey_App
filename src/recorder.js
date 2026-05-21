@@ -224,10 +224,12 @@ export class SystemCaptureControl {
     // MediaRecorder mime types matching - supports WebM on Chrome/Firefox and native MP4 on iOS/Safari
     let options = {};
     const candidateTypes = [
+      'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+      'video/mp4;codecs=avc1',
+      'video/mp4;codecs=h264',
+      'video/mp4',
       'video/webm;codecs=vp9,opus',
       'video/webm;codecs=vp8,opus',
-      'video/mp4;codecs=avc1,mp4a.40.2',
-      'video/mp4',
       'video/webm'
     ];
     
