@@ -130,6 +130,8 @@ export class WebGLCompositor {
       uniform bool uChromaKeyEnabled;
       uniform int uBgType; // 0=Solid Color, 1=Image Texture, 2=Video Texture
       uniform vec4 uSolidColor; // Solid background color normalized
+      uniform vec2 uFgScale;
+      uniform vec2 uBgScale;
 
       // Convert RGB to YUV for distance calculation
       vec3 rgb2yuv(vec3 rgb) {
@@ -140,8 +142,9 @@ export class WebGLCompositor {
       }
 
       void main() {
-        // Sample Foreground Camera Texture (Mirrored horizontally for natural presenting feel)
+        // Sample Foreground Camera Texture (Mirrored horizontally for natural presenting feel, centered and scaled to cover aspect ratio natively)
         vec2 fgCoord = vec2(1.0 - vTexCoord.x, vTexCoord.y);
+        fgCoord = (fgCoord - 0.5) * uFgScale + 0.5;
         vec4 fgColor = texture2D(uForegroundTexture, fgCoord);
         
         if (!uChromaKeyEnabled) {
@@ -164,8 +167,9 @@ export class WebGLCompositor {
         if (uBgType == 0) {
           bgColor = uSolidColor;
         } else {
-          // Standard mapping for backgrounds (Not mirrored)
-          bgColor = texture2D(uBackgroundTexture, vTexCoord);
+          // Standard mapping for backgrounds (Not mirrored, centered and scaled to cover aspect ratio)
+          vec2 bgCoord = (vTexCoord - 0.5) * uBgScale + 0.5;
+          bgColor = texture2D(uBackgroundTexture, bgCoord);
         }
 
         // Mix foreground over background based on alpha mask
@@ -311,6 +315,49 @@ export class WebGLCompositor {
       this.bgSolidColor[3] / 255,
     ];
     gl.uniform4fv(gl.getUniformLocation(this.program, 'uSolidColor'), solidNorm);
+
+    // Calculate aspect ratio scale factors to implement standard CSS object-fit: cover behavior (prevents stretching)
+    let fgScaleX = 1.0;
+    let fgScaleY = 1.0;
+    if (this.video.videoWidth > 0 && this.video.videoHeight > 0) {
+      const canvasAspect = this.canvas.width / this.canvas.height;
+      const videoAspect = this.video.videoWidth / this.video.videoHeight;
+      if (canvasAspect > videoAspect) {
+        // Viewport is wider than video (e.g. portrait video on landscape canvas)
+        // Crop vertically (scale Y coordinate down, keep X at 1.0)
+        fgScaleY = videoAspect / canvasAspect;
+      } else {
+        // Viewport is taller than video (e.g. landscape video on portrait canvas)
+        // Crop horizontally (scale X coordinate down, keep Y at 1.0)
+        fgScaleX = canvasAspect / videoAspect;
+      }
+    }
+    gl.uniform2f(gl.getUniformLocation(this.program, 'uFgScale'), fgScaleX, fgScaleY);
+
+    let bgScaleX = 1.0;
+    let bgScaleY = 1.0;
+    if (this.bgType === 'image' && this.bgImage && this.bgImage.width > 0 && this.bgImage.height > 0) {
+      const canvasAspect = this.canvas.width / this.canvas.height;
+      const imageAspect = this.bgImage.width / this.bgImage.height;
+      if (canvasAspect > imageAspect) {
+        // Crop vertically
+        bgScaleY = imageAspect / canvasAspect;
+      } else {
+        // Crop horizontally
+        bgScaleX = canvasAspect / imageAspect;
+      }
+    } else if (this.bgType === 'video' && this.bgVideo && this.bgVideo.videoWidth > 0 && this.bgVideo.videoHeight > 0) {
+      const canvasAspect = this.canvas.width / this.canvas.height;
+      const bgVideoAspect = this.bgVideo.videoWidth / this.bgVideo.videoHeight;
+      if (canvasAspect > bgVideoAspect) {
+        // Crop vertically
+        bgScaleY = bgVideoAspect / canvasAspect;
+      } else {
+        // Crop horizontally
+        bgScaleX = canvasAspect / bgVideoAspect;
+      }
+    }
+    gl.uniform2f(gl.getUniformLocation(this.program, 'uBgScale'), bgScaleX, bgScaleY);
 
     // Chroma Uniforms
     gl.uniform1i(gl.getUniformLocation(this.program, 'uChromaKeyEnabled'), this.chromaKeyEnabled ? 1 : 0);
