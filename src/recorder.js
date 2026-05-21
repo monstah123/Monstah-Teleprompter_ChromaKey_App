@@ -209,7 +209,7 @@ export class SystemCaptureControl {
     this.recordedChunks = [];
     
     // Capture canvas isolated compositor frames (excluding teleprompter DOM layers)
-    const canvasStream = this.canvas.captureStream(60); // 60fps stream
+    const canvasStream = this.canvas.captureStream(30); // Stable 30fps stream matches standard webcams and reduces CPU load
     
     // hard-lock camera frames with microphone tracks into a synchronized stream
     const combinedTracks = [];
@@ -254,7 +254,11 @@ export class SystemCaptureControl {
     
     for (const type of candidateTypes) {
       if (MediaRecorder.isTypeSupported(type)) {
-        options = { mimeType: type };
+        options = { 
+          mimeType: type,
+          videoBitsPerSecond: 2500000, // 2.5 Mbps is highly optimal for 720p/1080p real-time encoding
+          audioBitsPerSecond: 128000   // 128 kbps pristine audio
+        };
         break;
       }
     }
