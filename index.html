@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220%22 width=%22100%22 height=%22100%22><text y=%220.9em%22 font-size=%2290%22>🎙️</text></svg>" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Monstah Teleprompter & Chroma Key Pro</title>
+    <!-- Google Fonts: Outfit & Space Grotesk for professional visual aesthetics -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Lucide Icons CDN -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Mammoth.js for converting .docx files directly in the browser -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+  </head>
+  <body>
+    <div id="app">
+      <!-- Top Luxury Header -->
+      <header class="app-header">
+        <div class="header-logo">
+          <div class="logo-orb"></div>
+          <h1>MONSTAH <span class="accent-text">TELEPROMPTER PRO</span></h1>
+        </div>
+        <div class="header-badges">
+          <div class="status-badge" id="camera-badge">
+            <span class="dot"></span> Camera: Off
+          </div>
+          <div class="status-badge" id="webgl-badge">
+            <span class="dot"></span> WebGL: Active
+          </div>
+          <div class="status-badge status-badge-recording" id="rec-badge" style="display: none;">
+            <span class="dot pulse"></span> RECORDING
+          </div>
+        </div>
+      </header>
+
+      <!-- Main Layout Workspace -->
+      <main class="studio-workspace">
+        
+        <!-- Left: Live Video Monitor & Teleprompter Container -->
+        <section class="monitor-workspace">
+          <div class="monitor-container" id="monitor-container">
+            <!-- Behind-the-scenes video input (hidden from direct screen display, fed to WebGL) -->
+            <video id="webcam-input" autoplay playsinline muted style="display: none;"></video>
+            
+            <!-- WebGL Compositor Canvas (z_0 background + z_1 foreground chroma-keyed) -->
+            <canvas id="compositor-canvas"></canvas>
+
+            <!-- Calibration HUD & Concentric Guidelines (z-index helper overlay) -->
+            <div class="hud-overlay" id="hud-overlay">
+              <svg id="hud-vectors" viewBox="0 0 100 100" preserveAspectRatio="none">
+                <!-- Concentric eye-focus alignment vectors -->
+                <circle cx="50" cy="50" r="15" class="hud-circle hud-inner" />
+                <circle cx="50" cy="50" r="30" class="hud-circle hud-outer" />
+                <line x1="50" y1="0" x2="50" y2="100" class="hud-axis hud-vertical" />
+                <line x1="0" y1="50" x2="100" y2="50" class="hud-axis hud-horizontal" />
+                <!-- Draggable Camera Vector Target Indicator -->
+                <circle cx="50" cy="15" r="3" class="hud-lens-target" id="lens-target" />
+                <text x="50" y="10" class="hud-text">ALIGN EYES HERE</text>
+              </svg>
+            </div>
+
+            <!-- Floating Draggable, Resizable Teleprompter Card (z_2 overlay screen only) -->
+            <div class="teleprompter-card" id="teleprompter-card">
+              <!-- Draggable drag handle header -->
+              <div class="teleprompter-drag-header" id="teleprompter-drag-header">
+                <i data-lucide="grip-horizontal" class="drag-icon"></i>
+                <span class="drag-title">Teleprompter Scroller</span>
+                <button class="lock-top-btn" id="lock-top-btn" title="Lock Top-Center Eyeline Alignment">
+                  <i data-lucide="pin"></i>
+                </button>
+              </div>
+              
+              <!-- Teleprompter content body -->
+              <div class="teleprompter-scroll-view" id="teleprompter-scroll-view">
+                <!-- Eyeline marker guide lines (highlighting the line currently being read) -->
+                <div class="reading-guide-line reading-guide-left"></div>
+                <div class="reading-guide-line reading-guide-right"></div>
+                
+                <div class="teleprompter-text-content" id="teleprompter-text-content">
+                  Welcome to Monstah Teleprompter & Chroma Key Pro. Paste your script or upload files on the sidebar, calibrate your chroma key green-screen, choose a rich background layer, and press record. Your eyes will align naturally with your camera lens.
+                </div>
+              </div>
+
+              <!-- Resize handles -->
+              <div class="resize-handle rh-bottom-right"></div>
+              <div class="resize-handle rh-bottom-left"></div>
+              
+              <!-- Simple quick play bar on the card -->
+              <div class="card-play-controls">
+                <button class="card-ctrl-btn" id="card-play-btn"><i data-lucide="play"></i></button>
+                <button class="card-ctrl-btn" id="card-rewind-btn"><i data-lucide="rotate-ccw"></i></button>
+                <span class="card-speed-label" id="card-speed-indicator">WPM: 120</span>
+              </div>
+            </div>
+
+            <!-- Interactive Canvas Pixel Color Picker Eyedropper Guide -->
+            <div class="eyedropper-pointer" id="eyedropper-pointer" style="display: none;">
+              <div class="eyedropper-ring"></div>
+              <div class="eyedropper-dot"></div>
+            </div>
+
+            <!-- Countdown Pre-roll Overlay -->
+            <div class="countdown-overlay" id="countdown-overlay" style="display: none;">
+              <div class="countdown-radial-box">
+                <div class="countdown-number" id="countdown-number">3</div>
+                <svg class="countdown-svg" viewBox="0 0 100 100">
+                  <circle cx="50" cy="50" r="45" class="countdown-bg-ring" />
+                  <circle cx="50" cy="50" r="45" class="countdown-active-ring" id="countdown-active-ring" />
+                </svg>
+              </div>
+              <div class="countdown-alert">PREPARE TO RECORD...</div>
+            </div>
+
+            <!-- Live composited video asset references (hidden, parsed on standard draw cycles) -->
+            <video id="bg-video" loop playsinline muted style="display: none;"></video>
+          </div>
+
+          <!-- Quick Actions Bar beneath the screen -->
+          <div class="quick-status-bar">
+            <button class="btn btn-primary btn-record" id="btn-record-main">
+              <i data-lucide="circle" class="rec-icon"></i>
+              <span id="btn-record-main-text">Start Recording</span>
+            </button>
+            <div class="divider"></div>
+            <div class="prompter-quick-controls">
+              <button class="btn btn-secondary" id="btn-prompter-toggle" title="Pause / Play Spacebar">
+                <i data-lucide="play" id="quick-play-icon"></i>
+              </button>
+              <button class="btn btn-secondary" id="btn-prompter-rewind" title="Reset Text">
+                <i data-lucide="rotate-ccw"></i>
+              </button>
+              <div class="speed-slider-group">
+                <i data-lucide="gauge" class="control-label-icon"></i>
+                <input type="range" id="quick-speed-slider" min="80" max="300" step="5" value="120" class="slider-control" />
+                <span class="speed-val" id="quick-speed-val">120 WPM</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Right: Multi-tab Side Control Dashboard -->
+        <aside class="sidebar-workspace">
+          <nav class="sidebar-tabs">
+            <button class="tab-btn active" data-tab="tab-script">
+              <i data-lucide="file-text"></i>
+              <span>Script</span>
+            </button>
+            <button class="tab-btn" data-tab="tab-compositor">
+              <i data-lucide="layers"></i>
+              <span>Green Screen</span>
+            </button>
+            <button class="tab-btn" data-tab="tab-prompter">
+              <i data-lucide="sliders"></i>
+              <span>Styles</span>
+            </button>
+            <button class="tab-btn" data-tab="tab-record">
+              <i data-lucide="video"></i>
+              <span>Studio AV</span>
+            </button>
+          </nav>
+
+          <div class="sidebar-content-view">
+            <!-- TAB 1: Script Editor & AI assistant -->
+            <div class="sidebar-tab-panel active" id="tab-script">
+              <div class="panel-section">
+                <h3>Script Loader</h3>
+                <div class="import-actions">
+                  <label class="btn-upload">
+                    <i data-lucide="upload"></i> Import File (.txt / .docx)
+                    <input type="file" id="file-uploader" accept=".txt,.docx" style="display: none;" />
+                  </label>
+                  <button class="btn btn-secondary" id="btn-clear-script">
+                    <i data-lucide="trash-2"></i> Clear
+                  </button>
+                </div>
+              </div>
+
+              <div class="panel-section flex-grow">
+                <h3>Script Editor</h3>
+                <textarea id="script-editor" placeholder="Write or paste your script content here..."></textarea>
+              </div>
+
+              <!-- Gemini AI Studio Integrations -->
+              <div class="panel-section ai-assistant-block">
+                <div class="ai-header">
+                  <div class="ai-logo-cluster">
+                    <i data-lucide="sparkles" class="sparkle-icon"></i>
+                    <h4>Gemini AI Script Polisher</h4>
+                  </div>
+                  <span class="ai-badge">GEMINI 2.5</span>
+                </div>
+                
+                <div class="ai-body">
+                  <div class="form-group">
+                    <label for="ai-api-key">Google Gemini API Key:</label>
+                    <div class="input-password-wrapper">
+                      <input type="password" id="ai-api-key" placeholder="AI Studio Key" />
+                      <button class="btn-toggle-view" id="btn-toggle-key-view" type="button" title="Toggle visibility"><i data-lucide="eye"></i></button>
+                    </div>
+                    <div class="api-key-actions-row" style="display: flex; gap: 8px; margin-top: 4px;">
+                      <button class="btn btn-secondary" id="btn-save-api-key" style="flex: 1; padding: 6px 12px; font-size: 0.75rem;">
+                        <i data-lucide="save" style="width: 12px; height: 12px;"></i> Save Key
+                      </button>
+                      <button class="btn btn-secondary" id="btn-delete-api-key" style="flex: 1; padding: 6px 12px; font-size: 0.75rem; color: var(--accent-red); border-color: rgba(239, 68, 68, 0.2);">
+                        <i data-lucide="trash-2" style="width: 12px; height: 12px;"></i> Clear Key
+                      </button>
+                    </div>
+                    <span class="input-tip">Get a free key from <a href="https://aistudio.google.com/" target="_blank">Google AI Studio</a></span>
+                  </div>
+
+                  <div class="form-group">
+                    <label for="ai-polish-tone">Transformation Style:</label>
+                    <select id="ai-polish-tone" class="select-control">
+                      <option value="professional">Polish & Sound Professional</option>
+                      <option value="tiktok">Squeeze into 30s TikTok/Reel Outline</option>
+                      <option value="dramatic">Add Dramatic Pauses & Emphasis Cues</option>
+                      <option value="persuasive">Make Highly Persuasive & Conversational</option>
+                    </select>
+                  </div>
+
+                  <button class="btn btn-ai" id="btn-ai-polish">
+                    <i data-lucide="wand-2"></i> Polish Script
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- TAB 2: Live Video WebGL Compositor & Backgrounds -->
+            <div class="sidebar-tab-panel" id="tab-compositor">
+              <div class="panel-section">
+                <div class="section-row">
+                  <h3>Chroma Key (Green Screen)</h3>
+                  <label class="switch-toggle">
+                    <input type="checkbox" id="chroma-key-toggle" checked />
+                    <span class="switch-slider"></span>
+                  </label>
+                </div>
+                
+                <div class="chroma-settings-group">
+                  <div class="form-group">
+                    <label>Target Chroma Color:</label>
+                    <div class="color-picker-row">
+                      <input type="color" id="chroma-color-picker" value="#00ff00" class="color-picker-control" />
+                      <button class="btn btn-secondary" id="btn-eyedropper">
+                        <i data-lucide="pipette"></i> Sample Canvas
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="form-group">
+                    <div class="slider-label-row">
+                      <label for="chroma-similarity">Similarity Tolerance:</label>
+                      <span class="slider-label-val" id="chroma-similarity-val">0.30</span>
+                    </div>
+                    <input type="range" id="chroma-similarity" min="0.01" max="1.0" step="0.01" value="0.30" class="slider-control" />
+                  </div>
+
+                  <div class="form-group">
+                    <div class="slider-label-row">
+                      <label for="chroma-smoothness">Edge Softening:</label>
+                      <span class="slider-label-val" id="chroma-smoothness-val">0.10</span>
+                    </div>
+                    <input type="range" id="chroma-smoothness" min="0.01" max="1.0" step="0.01" value="0.10" class="slider-control" />
+                  </div>
+                </div>
+              </div>
+
+              <!-- Media Compositor Background Selector -->
+              <div class="panel-section">
+                <h3>Backdrop Composition (Layer z_0)</h3>
+                
+                <div class="media-tabs">
+                  <button class="btn-subtab active" data-subtab="preloaded-tab">Studio Templates</button>
+                  <button class="btn-subtab" data-subtab="custom-tab">Custom Upload</button>
+                </div>
+
+                <div class="subtab-content" id="preloaded-tab">
+                  <div class="assets-grid" id="preloaded-backgrounds">
+                    <!-- Cards will be populated by main.js with luxury gradients and office templates -->
+                  </div>
+                </div>
+
+                <div class="subtab-content" id="custom-tab" style="display: none;">
+                  <div class="custom-uploads-box">
+                    <div class="upload-dropzone">
+                      <i data-lucide="image" class="upload-ico"></i>
+                      <p>Drop Static Image Background</p>
+                      <label class="btn btn-small">
+                        Browse Image
+                        <input type="file" id="bg-image-uploader" accept="image/*" style="display: none;" />
+                      </label>
+                    </div>
+                    <div class="upload-dropzone mt-1">
+                      <i data-lucide="video" class="upload-ico"></i>
+                      <p>Drop Loop Video Backdrop</p>
+                      <label class="btn btn-small">
+                        Browse Video
+                        <input type="file" id="bg-video-uploader" accept="video/mp4" style="display: none;" />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- TAB 3: Teleprompter Customizing Settings -->
+            <div class="sidebar-tab-panel" id="tab-prompter">
+              <div class="panel-section">
+                <h3>Speed & Scroll Mode</h3>
+                
+                <div class="form-group">
+                  <div class="slider-label-row">
+                    <label for="prompter-speed">Scrolling Pace:</label>
+                    <span class="slider-label-val" id="prompter-speed-val">120 WPM</span>
+                  </div>
+                  <input type="range" id="prompter-speed" min="80" max="300" step="5" value="120" class="slider-control" />
+                  <div class="wpm-help-text">Equates to roughly 120 words per minute scroll.</div>
+                </div>
+
+                <div class="section-row mt-1">
+                  <div class="row-left">
+                    <label for="voice-tracking-toggle" class="strong-label">ASR Voice Tracking Scroll</label>
+                    <span class="input-tip">Locks scroll speed to your vocal pace</span>
+                  </div>
+                  <label class="switch-toggle">
+                    <input type="checkbox" id="voice-tracking-toggle" />
+                    <span class="switch-slider"></span>
+                  </label>
+                </div>
+                <div id="voice-status-block" class="voice-status-indicator" style="display: none;">
+                  <span class="dot pulse"></span> <span id="voice-status-text">Listening for speech...</span>
+                </div>
+              </div>
+
+              <div class="panel-section">
+                <h3>Card Font Metrics</h3>
+                
+                <div class="form-group">
+                  <div class="slider-label-row">
+                    <label for="font-scale">Font Size:</label>
+                    <span class="slider-label-val" id="font-scale-val">28px</span>
+                  </div>
+                  <input type="range" id="font-scale" min="16" max="64" value="28" class="slider-control" />
+                </div>
+
+                <div class="form-group">
+                  <div class="slider-label-row">
+                    <label for="card-opacity">Prompter Backdrop Opacity:</label>
+                    <span class="slider-label-val" id="card-opacity-val">65%</span>
+                  </div>
+                  <input type="range" id="card-opacity" min="0" max="100" value="65" class="slider-control" />
+                </div>
+
+                <div class="form-group">
+                  <div class="slider-label-row">
+                    <label for="card-padding">Horizontal Padding:</label>
+                    <span class="slider-label-val" id="card-padding-val">24px</span>
+                  </div>
+                  <input type="range" id="card-padding" min="8" max="64" value="24" class="slider-control" />
+                </div>
+
+                <div class="form-group">
+                  <label for="prompter-font-family">Typography Font:</label>
+                  <select id="prompter-font-family" class="select-control">
+                    <option value="'Outfit', sans-serif">Outfit (Premium Rounded)</option>
+                    <option value="'Space Grotesk', sans-serif">Space Grotesk (Tech Editorial)</option>
+                    <option value="system-ui, sans-serif">System Sans (Highly Legible)</option>
+                    <option value="monospace">Monospace (Clean Code)</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label for="prompter-align">Text Alignment:</label>
+                  <select id="prompter-align" class="select-control">
+                    <option value="center">Center Centered</option>
+                    <option value="left">Left Aligned</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="panel-section">
+                <h3>Eyeline Lock Controls</h3>
+                <div class="section-row">
+                  <div class="row-left">
+                    <label for="lock-eyeline-toggle" class="strong-label">Lock Top-Center Eyeline</label>
+                    <span class="input-tip">Pins text overlay right below webcam vector</span>
+                  </div>
+                  <label class="switch-toggle">
+                    <input type="checkbox" id="lock-eyeline-toggle" />
+                    <span class="switch-slider"></span>
+                  </label>
+                </div>
+
+                <div class="section-row mt-1">
+                  <div class="row-left">
+                    <label for="hud-guidelines-toggle" class="strong-label">Show Camera Calibration HUD</label>
+                    <span class="input-tip">Concentric target vectors for head tilt</span>
+                  </div>
+                  <label class="switch-toggle">
+                    <input type="checkbox" id="hud-guidelines-toggle" />
+                    <span class="switch-slider"></span>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            <!-- TAB 4: Media Hardware & Isolated Recorder Controls -->
+            <div class="sidebar-tab-panel" id="tab-record">
+              <div class="panel-section">
+                <h3>Hardware Interfaces</h3>
+                
+                <div class="form-group">
+                  <label for="video-device-select">Primary Camera:</label>
+                  <select id="video-device-select" class="select-control">
+                    <!-- Dynamic hardware list -->
+                    <option value="">Detecting video devices...</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label for="audio-device-select">Microphone Input:</label>
+                  <select id="audio-device-select" class="select-control">
+                    <!-- Dynamic hardware list -->
+                    <option value="">Detecting audio devices...</option>
+                  </select>
+                </div>
+
+                <div class="form-group">
+                  <label for="recording-resolution">Target Output Resolution:</label>
+                  <select id="recording-resolution" class="select-control">
+                    <option value="1920x1080">Full HD (1080p, 1920 x 1080)</option>
+                    <option value="1280x720" selected>Standard HD (720p, 1280 x 720)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="panel-section">
+                <h3>Recording Options</h3>
+                <div class="form-group">
+                  <label for="preroll-delay">Pre-roll Preparation Timer:</label>
+                  <select id="preroll-delay" class="select-control">
+                    <option value="3">3 Second Delay</option>
+                    <option value="5" selected>5 Second Delay</option>
+                    <option value="0">Instant Start (0s)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="panel-section mic-monitor-panel">
+                <h3>Microphone Level Monitor</h3>
+                <div class="mic-level-track">
+                  <div class="mic-level-fill" id="mic-level-indicator" style="width: 0%;"></div>
+                </div>
+              </div>
+
+              <div class="panel-section library-panel flex-grow">
+                <h3>Recorded Takes</h3>
+                <div class="library-takes-list" id="recorded-takes-list">
+                  <div class="empty-takes-tip">No recordings captured in this session. Recorded takes will appear here for playback and download.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </aside>
+      </main>
+
+      <!-- Recording Export Modal Dialog -->
+      <div class="modal-overlay" id="export-modal" style="display: none;">
+        <div class="export-modal-card">
+          <div class="modal-header">
+            <h3><i data-lucide="video" class="modal-ico"></i> Recording Captured Successfully!</h3>
+            <button class="btn-close-modal" id="btn-close-export"><i data-lucide="x"></i></button>
+          </div>
+          <div class="modal-body">
+            <p>Your video compositor z_0 (background) and z_1 (foreground camera) have been isolated and written. The scrolling teleprompter text (z_2) has been stripped out of this file.</p>
+            
+            <div class="export-preview-box">
+              <video id="export-preview-player" controls class="modal-video-player"></video>
+            </div>
+            
+            <div class="export-actions-row">
+              <a href="#" id="modal-download-link" download="Take_Composited.webm" class="btn btn-primary">
+                <i data-lucide="download"></i> Download Composited Video (.webm)
+              </a>
+              <button class="btn btn-secondary" id="btn-discard-take">
+                <i data-lucide="trash-2"></i> Discard
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Core Modular Entrypoint -->
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
