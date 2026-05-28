@@ -54,11 +54,15 @@ window.addEventListener('DOMContentLoaded', async () => {
 
 });
 
-// Window resize adjust
+// Parse the combined format select value (e.g. "1280x720:16:9") into
+// canvas dimensions and portrait/landscape mode, then apply everything.
 function adjustCanvasResolution() {
-  const widthSelect = document.getElementById('recording-resolution')?.value || '1280x720';
-  const [w, h] = widthSelect.split('x').map(Number);
-  
+  const formatVal = document.getElementById('recording-format')?.value || '1280x720:16:9';
+  // Value format: "WxH:AR" e.g. "1080x1920:9:16"
+  const parts = formatVal.split(':');
+  const [w, h] = parts[0].split('x').map(Number);
+  const isVertical = parts[1] === '9' && parts[2] === '16'; // "9:16" → parts[1]=9, parts[2]=16
+
   if (compositor && compositor.canvas) {
     compositor.canvas.width = w;
     compositor.canvas.height = h;
@@ -68,7 +72,10 @@ function adjustCanvasResolution() {
   const container = document.getElementById('monitor-container');
   if (container) {
     container.style.aspectRatio = `${w}/${h}`;
+    container.classList.toggle('portrait', isVertical);
   }
+
+  return { w, h, isVertical };
 }
 
 window.addEventListener('resize', () => {
@@ -109,7 +116,6 @@ function initAppNavigation() {
 async function initDeviceManagement() {
   const camSelect = document.getElementById('video-device-select');
   const micSelect = document.getElementById('audio-device-select');
-  const resSelect = document.getElementById('recording-resolution');
 
   // Load hardware options
   const { cameras, microphones } = await recorder.getDevices();
@@ -150,58 +156,30 @@ async function initDeviceManagement() {
     recorder.startMicrophone(micSelect.value);
   });
 
-  // Resolution event selection
-  resSelect.addEventListener('change', () => {
-    adjustCanvasResolution();
-  });
 
-  // Aspect ratio change selection
+  // Combined Format & Resolution change handler
+  // The value encodes everything: "1280x720:16:9" -> width, height, portrait flag
+  const formatSelect = document.getElementById('recording-format');
+  if (formatSelect) {
+    formatSelect.addEventListener('change', () => {
+      const { isVertical } = adjustCanvasResolution();
+
+      // Restart webcam with correct orientation constraints for iOS
+      const activeCamId = document.getElementById('video-device-select').value;
+      recorder.startWebcam(activeCamId, isVertical);
+    });
+  }
+
+  // Aspect ratio change selection — kept for legacy compatibility but
+  // new UI uses #recording-format which handles both at once
   const aspectSelect = document.getElementById('aspect-ratio-select');
   if (aspectSelect) {
     aspectSelect.addEventListener('change', () => {
       const isVertical = aspectSelect.value === '9:16';
-      
-      // Toggle portrait class on the monitor container for correct CSS sizing
       const monitorContainer = document.getElementById('monitor-container');
       if (monitorContainer) {
         monitorContainer.classList.toggle('portrait', isVertical);
       }
-
-      // Dynamic replacement of resolutions options
-      resSelect.innerHTML = '';
-      if (isVertical) {
-        const opt1 = document.createElement('option');
-        opt1.value = '1080x1920';
-        opt1.textContent = 'Vertical Full HD (1080p, 1080 x 1920)';
-        opt1.selected = true;
-        
-        const opt2 = document.createElement('option');
-        opt2.value = '720x1280';
-        opt2.textContent = 'Vertical Standard HD (720p, 720 x 1280)';
-        
-        resSelect.appendChild(opt1);
-        resSelect.appendChild(opt2);
-      } else {
-        const opt1 = document.createElement('option');
-        opt1.value = '1920x1080';
-        opt1.textContent = 'Full HD (1080p, 1920 x 1080)';
-        
-        const opt2 = document.createElement('option');
-        opt2.value = '1280x720';
-        opt2.textContent = 'Standard HD (720p, 1280 x 720)';
-        opt2.selected = true;
-        
-        resSelect.appendChild(opt1);
-        resSelect.appendChild(opt2);
-      }
-      
-      // Propagate changes to compositor canvas and preview container
-      adjustCanvasResolution();
-
-      // Restart webcam with orientation-appropriate constraints so iOS
-      // doesn't serve a landscape stream into a portrait canvas
-      const activeCamId = document.getElementById('video-device-select').value;
-      recorder.startWebcam(activeCamId, isVertical);
     });
   }
 

@@ -428,18 +428,16 @@
                 </div>
 
                 <div class="form-group">
-                  <label for="aspect-ratio-select">Output Aspect Ratio:</label>
-                  <select id="aspect-ratio-select" class="select-control">
-                    <option value="16:9" selected>Landscape (16:9 - Desktop/YouTube)</option>
-                    <option value="9:16">Vertical (9:16 - Reels/TikTok/Shorts)</option>
-                  </select>
-                </div>
-
-                <div class="form-group">
-                  <label for="recording-resolution">Target Output Resolution:</label>
-                  <select id="recording-resolution" class="select-control">
-                    <option value="1920x1080">Full HD (1080p, 1920 x 1080)</option>
-                    <option value="1280x720" selected>Standard HD (720p, 1280 x 720)</option>
+                  <label for="recording-format">Format &amp; Resolution:</label>
+                  <select id="recording-format" class="select-control">
+                    <optgroup label="📺 Landscape (16:9)">
+                      <option value="1920x1080:16:9">Full HD — 1920 × 1080 (YouTube / Desktop)</option>
+                      <option value="1280x720:16:9" selected>Standard HD — 1280 × 720 (YouTube / Desktop)</option>
+                    </optgroup>
+                    <optgroup label="📱 Vertical (9:16)">
+                      <option value="1080x1920:9:16">Full HD — 1080 × 1920 (Reels / TikTok / Shorts)</option>
+                      <option value="720x1280:9:16">Standard HD — 720 × 1280 (Reels / TikTok / Shorts)</option>
+                    </optgroup>
                   </select>
                 </div>
               </div>
