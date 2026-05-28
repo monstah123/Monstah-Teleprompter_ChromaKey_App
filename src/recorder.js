@@ -55,24 +55,28 @@ export class SystemCaptureControl {
   }
 
   // 2. Start hardware webcam streams
-  async startWebcam(cameraId = '') {
+  async startWebcam(cameraId = '', portrait = false) {
     // Stop existing camera track if active
     if (this.cameraStream) {
       this.cameraStream.getTracks().forEach(track => track.stop());
     }
 
+    // Request portrait-oriented dimensions when in 9:16 mode so iOS
+    // provides the stream in the correct orientation without a 90° rotation
+    const vidConstraints = cameraId ? {
+      deviceId: { exact: cameraId },
+      width:  { ideal: portrait ? 720  : 1280 },
+      height: { ideal: portrait ? 1280 : 720  },
+      aspectRatio: { ideal: portrait ? 0.5625 : 1.777777778 }
+    } : {
+      facingMode: 'user',
+      width:  { ideal: portrait ? 720  : 1280 },
+      height: { ideal: portrait ? 1280 : 720  },
+      aspectRatio: { ideal: portrait ? 0.5625 : 1.777777778 }
+    };
+
     const constraints = {
-      video: cameraId ? { 
-        deviceId: { exact: cameraId },
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-        aspectRatio: { ideal: 1.777777778 }
-      } : {
-        facingMode: "user",
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-        aspectRatio: { ideal: 1.777777778 }
-      },
+      video: vidConstraints,
       audio: false // Handled separately for recording
     };
 
@@ -111,12 +115,15 @@ export class SystemCaptureControl {
     const constraints = {
       audio: micId ? {
         deviceId: { exact: micId },
-        echoCancellation: false,
-        noiseSuppression: false,
+        // On mobile (iPhone), enabling iOS audio processing unlocks Apple's
+        // built-in gain pipeline, which significantly boosts mic volume.
+        // Disabling these was bypassing AGC entirely on iPhone's small mic.
+        echoCancellation: this.isMobileDevice,
+        noiseSuppression: this.isMobileDevice,
         autoGainControl: true
       } : {
-        echoCancellation: false,
-        noiseSuppression: false,
+        echoCancellation: this.isMobileDevice,
+        noiseSuppression: this.isMobileDevice,
         autoGainControl: true
       }
     };

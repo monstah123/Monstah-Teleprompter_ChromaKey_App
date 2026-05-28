@@ -161,6 +161,12 @@ async function initDeviceManagement() {
     aspectSelect.addEventListener('change', () => {
       const isVertical = aspectSelect.value === '9:16';
       
+      // Toggle portrait class on the monitor container for correct CSS sizing
+      const monitorContainer = document.getElementById('monitor-container');
+      if (monitorContainer) {
+        monitorContainer.classList.toggle('portrait', isVertical);
+      }
+
       // Dynamic replacement of resolutions options
       resSelect.innerHTML = '';
       if (isVertical) {
@@ -191,6 +197,11 @@ async function initDeviceManagement() {
       
       // Propagate changes to compositor canvas and preview container
       adjustCanvasResolution();
+
+      // Restart webcam with orientation-appropriate constraints so iOS
+      // doesn't serve a landscape stream into a portrait canvas
+      const activeCamId = document.getElementById('video-device-select').value;
+      recorder.startWebcam(activeCamId, isVertical);
     });
   }
 
@@ -568,9 +579,18 @@ function initRecorderControls() {
       
       btnRecMain.classList.remove('recording');
       btnRecMainText.textContent = 'Start Recording';
+    } else if (recorder.isPreRolling) {
+      // Cancel pre-roll countdown
+      recorder.cancelPreRoll();
+      btnRecMain.classList.remove('recording');
+      btnRecMainText.textContent = 'Start Recording';
     } else {
       // Start Recording with pre-roll timers
       const prerollSec = parseInt(prerollSelect.value, 10);
+      
+      if (prerollSec > 0) {
+        btnRecMainText.textContent = 'Cancel Countdown';
+      }
       
       recorder.triggerPreRoll(prerollSec, () => {
         try {
@@ -578,6 +598,7 @@ function initRecorderControls() {
         } catch (err) {
           console.error('Error starting recording:', err);
           alert('Failed to start recording. Please check that camera and mic inputs are allowed.');
+          btnRecMainText.textContent = 'Start Recording';
           return;
         }
         
@@ -604,6 +625,9 @@ function initRecorderControls() {
 
   // Take Captured trigger
   recorder.onTakeRecorded = (take) => {
+    // Release active audio capture focus so phone speakers can playback at full volume
+    recorder.suspendAudioCapture();
+
     // 1. Show modal preview
     previewPlayer.src = take.url;
     downloadLink.href = take.url;
@@ -622,6 +646,7 @@ function initRecorderControls() {
   closeModalBtn.addEventListener('click', () => {
     exportModal.style.display = 'none';
     previewPlayer.src = '';
+    recorder.resumeAudioCapture();
   });
 
   discardBtn.addEventListener('click', () => {
@@ -632,6 +657,7 @@ function initRecorderControls() {
     }
     exportModal.style.display = 'none';
     previewPlayer.src = '';
+    recorder.resumeAudioCapture();
   });
 
   function refreshTakesListUI() {

@@ -199,6 +199,16 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
+  margin: 0 auto;
+  transition: aspect-ratio 0.3s ease, max-height 0.3s ease, max-width 0.3s ease;
+}
+
+/* Portrait 9:16 mode: constrain by width so the tall container fits the workspace */
+.monitor-container.portrait {
+  aspect-ratio: 9/16;
+  max-height: 90%;
+  max-width: 45%; /* Keeps portrait box narrow so it fits without overflow */
+  width: auto;
 }
 
 #compositor-canvas {
