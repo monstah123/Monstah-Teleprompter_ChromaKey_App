@@ -130,8 +130,9 @@ export class WebGLCompositor {
       uniform float uSimilarity;
       uniform float uSmoothness;
       uniform bool uChromaKeyEnabled;
-      uniform int uBgType; // 0=Solid Color, 1=Image Texture, 2=Video Texture
-      uniform vec4 uSolidColor; // Solid background color normalized
+      uniform bool uFgContain;   // Contain mode: show background outside video bounds (letterbox/pillarbox)
+      uniform int uBgType;       // 0=Solid Color, 1=Image Texture, 2=Video Texture
+      uniform vec4 uSolidColor;  // Solid background color normalized
       uniform vec2 uFgScale;
       uniform vec2 uBgScale;
 
@@ -144,37 +145,47 @@ export class WebGLCompositor {
       }
 
       void main() {
-        // Sample Foreground Camera Texture (Mirrored horizontally for natural presenting feel, centered and scaled to cover aspect ratio natively)
+        // 1. Always compute background color first — needed for contain gaps and chroma blending
+        vec4 bgColor;
+        if (uBgType == 0) {
+          bgColor = uSolidColor;
+        } else {
+          // Standard mapping for backgrounds (not mirrored, centered and scaled to cover aspect ratio)
+          vec2 bgCoord = (vTexCoord - 0.5) * uBgScale + 0.5;
+          bgColor = texture2D(uBackgroundTexture, bgCoord);
+        }
+
+        // 2. Compute foreground texture coordinate (mirrored horizontally for natural presenting feel)
         vec2 fgCoord = vec2(1.0 - vTexCoord.x, vTexCoord.y);
         fgCoord = (fgCoord - 0.5) * uFgScale + 0.5;
-        vec4 fgColor = texture2D(uForegroundTexture, fgCoord);
-        
+
+        // 3. Contain mode: when the canvas and video aspect ratios differ significantly
+        //    (e.g. portrait canvas + landscape webcam), texture coordinates go outside [0,1].
+        //    Instead of clamping to edge pixels (which looks wrong), output pure background.
+        //    This is the letterbox/pillarbox behavior used by TikTok and Reels.
+        if (uFgContain && (fgCoord.x < 0.0 || fgCoord.x > 1.0 || fgCoord.y < 0.0 || fgCoord.y > 1.0)) {
+          gl_FragColor = bgColor;
+          return;
+        }
+
+        // 4. Sample foreground camera texture
+        vec4 fgColor = texture2D(uForegroundTexture, clamp(fgCoord, 0.0, 1.0));
+
+        // 5. Without chroma key: output foreground directly
         if (!uChromaKeyEnabled) {
           gl_FragColor = fgColor;
           return;
         }
 
-        // Convert key and sample to YUV coordinates
+        // 6. Chroma Key: distance in Chrominance (U,V) space — isolates color from shadows/luminance
         vec3 fgYuv = rgb2yuv(fgColor.rgb);
         vec3 keyYuv = rgb2yuv(uKeyColor);
-
-        // Distance in Chrominance (U,V) space - isolates color from shadows/luminance
         float chromaDist = distance(fgYuv.yz, keyYuv.yz);
 
         // Compute alpha mask threshold with smoothstep softening
         float mask = smoothstep(uSimilarity, uSimilarity + uSmoothness, chromaDist);
-        
-        // Get Background color
-        vec4 bgColor;
-        if (uBgType == 0) {
-          bgColor = uSolidColor;
-        } else {
-          // Standard mapping for backgrounds (Not mirrored, centered and scaled to cover aspect ratio)
-          vec2 bgCoord = (vTexCoord - 0.5) * uBgScale + 0.5;
-          bgColor = texture2D(uBackgroundTexture, bgCoord);
-        }
 
-        // Mix foreground over background based on alpha mask
+        // Mix foreground over background based on chroma mask
         gl_FragColor = mix(bgColor, fgColor, mask);
       }
     `;
@@ -226,6 +237,7 @@ export class WebGLCompositor {
     this.uniforms.uForegroundTexture = gl.getUniformLocation(this.program, 'uForegroundTexture');
     this.uniforms.uBackgroundTexture = gl.getUniformLocation(this.program, 'uBackgroundTexture');
     this.uniforms.uChromaKeyEnabled  = gl.getUniformLocation(this.program, 'uChromaKeyEnabled');
+    this.uniforms.uFgContain         = gl.getUniformLocation(this.program, 'uFgContain');
     this.uniforms.uKeyColor          = gl.getUniformLocation(this.program, 'uKeyColor');
     this.uniforms.uSimilarity        = gl.getUniformLocation(this.program, 'uSimilarity');
     this.uniforms.uSmoothness        = gl.getUniformLocation(this.program, 'uSmoothness');
@@ -336,22 +348,46 @@ export class WebGLCompositor {
     ];
     gl.uniform4fv(u.uSolidColor, solidNorm);
 
-    // Calculate aspect ratio scale factors to implement standard CSS object-fit: cover behavior (prevents stretching)
+    // Calculate foreground scale and contain mode.
+    // "Cover" is used when aspect ratios are similar (fills canvas, crops excess).
+    // "Contain" is used when they differ significantly — e.g. portrait canvas + landscape webcam
+    // would produce 3.16x cover zoom which looks way too close. Contain fits the video to the
+    // canvas width and lets the background fill the letterbox gaps, matching TikTok/Reels behavior.
+    let fgContain = false;
     let fgScaleX = 1.0;
     let fgScaleY = 1.0;
+
     if (this.video.videoWidth > 0 && this.video.videoHeight > 0) {
       const canvasAspect = this.canvas.width / this.canvas.height;
       const videoAspect = this.video.videoWidth / this.video.videoHeight;
-      if (canvasAspect > videoAspect) {
-        // Viewport is wider than video (e.g. portrait video on landscape canvas)
-        // Crop vertically (scale Y coordinate down, keep X at 1.0)
-        fgScaleY = videoAspect / canvasAspect;
+      // Compute how much zoom cover would produce
+      const coverZoom = canvasAspect > videoAspect
+        ? canvasAspect / videoAspect
+        : videoAspect / canvasAspect;
+
+      if (coverZoom > 1.8) {
+        // Aspect ratios differ too much — switch to contain mode
+        fgContain = true;
+        if (canvasAspect > videoAspect) {
+          // Landscape canvas + portrait video → pillarbox (background fills sides)
+          fgScaleX = canvasAspect / videoAspect;
+          fgScaleY = 1.0;
+        } else {
+          // Portrait canvas + landscape video → letterbox (background fills top/bottom)
+          fgScaleX = 1.0;
+          fgScaleY = videoAspect / canvasAspect;
+        }
       } else {
-        // Viewport is taller than video (e.g. landscape video on portrait canvas)
-        // Crop horizontally (scale X coordinate down, keep Y at 1.0)
-        fgScaleX = canvasAspect / videoAspect;
+        // Standard cover: fills canvas completely, crops excess on one axis
+        if (canvasAspect > videoAspect) {
+          fgScaleY = videoAspect / canvasAspect;
+        } else {
+          fgScaleX = canvasAspect / videoAspect;
+        }
       }
     }
+
+    gl.uniform1i(u.uFgContain, fgContain ? 1 : 0);
     gl.uniform2f(u.uFgScale, fgScaleX, fgScaleY);
 
     let bgScaleX = 1.0;
