@@ -35,6 +35,8 @@ export class WebGLCompositor {
     this.program = null;
     this.buffers = {};
     this.textures = {};
+    this.uniforms = {}; // Cached uniform locations (avoid per-frame driver lookups)
+    this.attribs = {};  // Cached attribute locations
     this.isRendering = false;
 
     // Eyedropper State
@@ -213,6 +215,24 @@ export class WebGLCompositor {
     // 4. Setup Textures
     this.textures.foreground = this.createTexture();
     this.textures.background = this.createTexture();
+
+    // 5. Cache all uniform and attribute locations once after program link.
+    // getUniformLocation/getAttribLocation are expensive GPU driver calls;
+    // calling them inside the render loop at 60fps wastes significant CPU,
+    // especially on older mobile chips like the iPhone X A11.
+    gl.useProgram(this.program);
+    this.attribs.aPosition  = gl.getAttribLocation(this.program, 'aPosition');
+    this.attribs.aTexCoord  = gl.getAttribLocation(this.program, 'aTexCoord');
+    this.uniforms.uForegroundTexture = gl.getUniformLocation(this.program, 'uForegroundTexture');
+    this.uniforms.uBackgroundTexture = gl.getUniformLocation(this.program, 'uBackgroundTexture');
+    this.uniforms.uChromaKeyEnabled  = gl.getUniformLocation(this.program, 'uChromaKeyEnabled');
+    this.uniforms.uKeyColor          = gl.getUniformLocation(this.program, 'uKeyColor');
+    this.uniforms.uSimilarity        = gl.getUniformLocation(this.program, 'uSimilarity');
+    this.uniforms.uSmoothness        = gl.getUniformLocation(this.program, 'uSmoothness');
+    this.uniforms.uBgType            = gl.getUniformLocation(this.program, 'uBgType');
+    this.uniforms.uSolidColor        = gl.getUniformLocation(this.program, 'uSolidColor');
+    this.uniforms.uFgScale           = gl.getUniformLocation(this.program, 'uFgScale');
+    this.uniforms.uBgScale           = gl.getUniformLocation(this.program, 'uBgScale');
   }
 
   compileShader(type, source) {
@@ -261,6 +281,8 @@ export class WebGLCompositor {
     if (!this.isRendering) return;
 
     const gl = this.gl;
+    const u = this.uniforms; // Cached uniform locations — no per-frame driver lookups
+    const a = this.attribs;  // Cached attribute locations
 
     // Set Viewport and Clear
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
@@ -270,16 +292,14 @@ export class WebGLCompositor {
     gl.useProgram(this.program);
 
     // Bind Position buffer
-    const aPosition = gl.getAttribLocation(this.program, 'aPosition');
-    gl.enableVertexAttribArray(aPosition);
+    gl.enableVertexAttribArray(a.aPosition);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.position);
-    gl.vertexAttribPointer(aPosition, 2, gl.FLOAT, false, 0, 0);
+    gl.vertexAttribPointer(a.aPosition, 2, gl.FLOAT, false, 0, 0);
 
     // Bind TexCoord buffer
-    const aTexCoord = gl.getAttribLocation(this.program, 'aTexCoord');
-    gl.enableVertexAttribArray(aTexCoord);
+    gl.enableVertexAttribArray(a.aTexCoord);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.texCoord);
-    gl.vertexAttribPointer(aTexCoord, 2, gl.FLOAT, false, 0, 0);
+    gl.vertexAttribPointer(a.aTexCoord, 2, gl.FLOAT, false, 0, 0);
 
     // Bind Foreground Texture (Webcam feed)
     gl.activeTexture(gl.TEXTURE0);
@@ -287,7 +307,7 @@ export class WebGLCompositor {
     if (this.video.readyState >= this.video.HAVE_CURRENT_DATA) {
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.video);
     }
-    gl.uniform1i(gl.getUniformLocation(this.program, 'uForegroundTexture'), 0);
+    gl.uniform1i(u.uForegroundTexture, 0);
 
     // Bind Background Texture
     let typeVal = 0; // Solid Color
@@ -295,17 +315,17 @@ export class WebGLCompositor {
       typeVal = 1;
       gl.activeTexture(gl.TEXTURE1);
       gl.bindTexture(gl.TEXTURE_2D, this.textures.background);
-      gl.uniform1i(gl.getUniformLocation(this.program, 'uBackgroundTexture'), 1);
+      gl.uniform1i(u.uBackgroundTexture, 1);
     } else if (this.bgType === 'video' && this.bgVideo.readyState >= this.bgVideo.HAVE_CURRENT_DATA) {
       typeVal = 2;
       gl.activeTexture(gl.TEXTURE1);
       gl.bindTexture(gl.TEXTURE_2D, this.textures.background);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.bgVideo);
-      gl.uniform1i(gl.getUniformLocation(this.program, 'uBackgroundTexture'), 1);
+      gl.uniform1i(u.uBackgroundTexture, 1);
     }
 
     // Set Uniform Parameters
-    gl.uniform1i(gl.getUniformLocation(this.program, 'uBgType'), typeVal);
+    gl.uniform1i(u.uBgType, typeVal);
     
     // Normalize Solid Color
     const solidNorm = [
@@ -314,7 +334,7 @@ export class WebGLCompositor {
       this.bgSolidColor[2] / 255,
       this.bgSolidColor[3] / 255,
     ];
-    gl.uniform4fv(gl.getUniformLocation(this.program, 'uSolidColor'), solidNorm);
+    gl.uniform4fv(u.uSolidColor, solidNorm);
 
     // Calculate aspect ratio scale factors to implement standard CSS object-fit: cover behavior (prevents stretching)
     let fgScaleX = 1.0;
@@ -332,7 +352,7 @@ export class WebGLCompositor {
         fgScaleX = canvasAspect / videoAspect;
       }
     }
-    gl.uniform2f(gl.getUniformLocation(this.program, 'uFgScale'), fgScaleX, fgScaleY);
+    gl.uniform2f(u.uFgScale, fgScaleX, fgScaleY);
 
     let bgScaleX = 1.0;
     let bgScaleY = 1.0;
@@ -357,13 +377,13 @@ export class WebGLCompositor {
         bgScaleX = canvasAspect / bgVideoAspect;
       }
     }
-    gl.uniform2f(gl.getUniformLocation(this.program, 'uBgScale'), bgScaleX, bgScaleY);
+    gl.uniform2f(u.uBgScale, bgScaleX, bgScaleY);
 
     // Chroma Uniforms
-    gl.uniform1i(gl.getUniformLocation(this.program, 'uChromaKeyEnabled'), this.chromaKeyEnabled ? 1 : 0);
-    gl.uniform3fv(gl.getUniformLocation(this.program, 'uKeyColor'), this.keyColor);
-    gl.uniform1f(gl.getUniformLocation(this.program, 'uSimilarity'), this.similarity);
-    gl.uniform1f(gl.getUniformLocation(this.program, 'uSmoothness'), this.smoothness);
+    gl.uniform1i(u.uChromaKeyEnabled, this.chromaKeyEnabled ? 1 : 0);
+    gl.uniform3fv(u.uKeyColor, this.keyColor);
+    gl.uniform1f(u.uSimilarity, this.similarity);
+    gl.uniform1f(u.uSmoothness, this.smoothness);
 
     // Draw full-screen Quad
     gl.drawArrays(gl.TRIANGLES, 0, 6);

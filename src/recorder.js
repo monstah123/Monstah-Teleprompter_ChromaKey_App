@@ -26,7 +26,12 @@ export class SystemCaptureControl {
     this.audioContext = null;
     this.analyser = null;
     this.micMonitorActive = false;
+    this.micLevelLastDraw = 0; // Timestamp used to throttle mic level draw rate
     this.countdownTimer = null;
+    this.isPreRolling = false;
+
+    // Detect older/mobile hardware to apply performance-friendly settings
+    this.isMobileDevice = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
     // DOM Elements
     this.countdownOverlay = document.getElementById('countdown-overlay');
@@ -104,7 +109,16 @@ export class SystemCaptureControl {
     }
 
     const constraints = {
-      audio: micId ? { deviceId: { exact: micId } } : true
+      audio: micId ? {
+        deviceId: { exact: micId },
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: true
+      } : {
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: true
+      }
     };
 
     try {
@@ -126,10 +140,13 @@ export class SystemCaptureControl {
       this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
       const source = this.audioContext.createMediaStreamSource(this.micStream);
       this.analyser = this.audioContext.createAnalyser();
-      this.analyser.fftSize = 256;
+      // fftSize 32 is more than sufficient for a simple VU level meter
+      // and uses ~8x less CPU than the default 256 — critical for older iPhones
+      this.analyser.fftSize = 32;
       source.connect(this.analyser);
       
       this.micMonitorActive = true;
+      this.micLevelLastDraw = 0;
       this.drawMicLevel();
     } catch (e) {
       console.log('Web Audio Context initialize deferred or failed:', e);
@@ -139,7 +156,9 @@ export class SystemCaptureControl {
   stopMicMonitor() {
     this.micMonitorActive = false;
     if (this.audioContext) {
-      this.audioContext.close();
+      try {
+        this.audioContext.close();
+      } catch (e) {}
       this.audioContext = null;
     }
     const indicator = document.getElementById('mic-level-indicator');
@@ -149,24 +168,44 @@ export class SystemCaptureControl {
   drawMicLevel() {
     if (!this.micMonitorActive || !this.analyser) return;
 
-    const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
-    this.analyser.getByteFrequencyData(dataArray);
+    // Throttle mic level redraws to ~10fps on mobile (saves significant CPU on older iPhones)
+    // and ~20fps on desktop — a VU meter needs no more than this to feel responsive
+    const now = performance.now();
+    const targetInterval = this.isMobileDevice ? 100 : 50; // ms between draws
+    if (now - this.micLevelLastDraw >= targetInterval) {
+      this.micLevelLastDraw = now;
 
-    // Calculate volume sum
-    let total = 0;
-    for (let i = 0; i < dataArray.length; i++) {
-      total += dataArray[i];
-    }
-    const average = total / dataArray.length;
-    // Map scale to percentage width (gain booster)
-    const percentage = Math.min(100, Math.round((average / 128) * 100));
+      const dataArray = new Uint8Array(this.analyser.frequencyBinCount);
+      this.analyser.getByteFrequencyData(dataArray);
 
-    const indicator = document.getElementById('mic-level-indicator');
-    if (indicator) {
-      indicator.style.width = `${percentage}%`;
+      // Calculate volume average
+      let total = 0;
+      for (let i = 0; i < dataArray.length; i++) {
+        total += dataArray[i];
+      }
+      const average = total / dataArray.length;
+      // Map scale to percentage width (gain booster)
+      const percentage = Math.min(100, Math.round((average / 128) * 100));
+
+      const indicator = document.getElementById('mic-level-indicator');
+      if (indicator) {
+        indicator.style.width = `${percentage}%`;
+      }
     }
 
     requestAnimationFrame(() => this.drawMicLevel());
+  }
+
+  suspendAudioCapture() {
+    this.stopMicMonitor();
+    if (this.micStream) {
+      this.micStream.getTracks().forEach(track => track.stop());
+      this.micStream = null;
+    }
+  }
+
+  async resumeAudioCapture() {
+    await this.startMicrophone(this.activeMicId);
   }
 
   // 4. Pre-Roll countdown utility
@@ -176,6 +215,7 @@ export class SystemCaptureControl {
       return;
     }
 
+    this.isPreRolling = true;
     this.countdownOverlay.style.display = 'flex';
     let count = seconds;
     this.countdownNum.textContent = count;
@@ -190,6 +230,8 @@ export class SystemCaptureControl {
       count--;
       if (count <= 0) {
         clearInterval(this.countdownTimer);
+        this.countdownTimer = null;
+        this.isPreRolling = false;
         this.countdownOverlay.style.display = 'none';
         onFinishedCallback();
       } else {
@@ -202,6 +244,17 @@ export class SystemCaptureControl {
     }, interval);
   }
 
+  cancelPreRoll() {
+    if (this.countdownTimer) {
+      clearInterval(this.countdownTimer);
+      this.countdownTimer = null;
+    }
+    this.isPreRolling = false;
+    if (this.countdownOverlay) {
+      this.countdownOverlay.style.display = 'none';
+    }
+  }
+
   // 5. Canvas Isolated Record start
   startRecording() {
     if (this.isRecording) return;
@@ -209,7 +262,10 @@ export class SystemCaptureControl {
     this.recordedChunks = [];
     
     // Capture canvas isolated compositor frames (excluding teleprompter DOM layers)
-    const canvasStream = this.canvas.captureStream(30); // Stable 30fps stream matches standard webcams and reduces CPU load
+    // Use 24fps on mobile to reduce encoder pressure on older chips (iPhone X / A11)
+    // 30fps is used on desktop where hardware can handle it without thermal throttling
+    const captureRate = this.isMobileDevice ? 24 : 30;
+    const canvasStream = this.canvas.captureStream(captureRate); // Matches webcam frame rate to reduce CPU encoding load
     
     // hard-lock camera frames with microphone tracks into a synchronized stream
     const combinedTracks = [];
