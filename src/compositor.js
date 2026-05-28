@@ -348,25 +348,50 @@ export class WebGLCompositor {
     ];
     gl.uniform4fv(u.uSolidColor, solidNorm);
 
-    // Cover mode: fills canvas completely, crops excess on one axis.
-    // On iPhone held portrait, the camera returns a portrait stream (720x1280)
-    // so canvasAspect ≈ videoAspect → no zoom needed. This is the correct behavior.
+    // Smart foreground scale calculation.
+    //
+    // When canvas and video aspect ratios MATCH (e.g. both 9:16 on iPhone in portrait):
+    //   → plain cover, fgScale ≈ (1.0, 1.0), no zoom at all. Perfect fill.
+    //
+    // When they DON'T match by more than 2× (e.g. landscape camera in portrait canvas):
+    //   → pure cover zooms 3.16× and shows only the subject's HEAD.
+    //   → instead use center 45% of landscape width (≈2.2× zoom) so the person is
+    //     visible head-to-shoulders. The virtual background fills the small edge strips.
+    let fgContain = false;
     let fgScaleX = 1.0;
     let fgScaleY = 1.0;
 
     if (this.video.videoWidth > 0 && this.video.videoHeight > 0) {
       const canvasAspect = this.canvas.width / this.canvas.height;
-      const videoAspect = this.video.videoWidth / this.video.videoHeight;
-      if (canvasAspect > videoAspect) {
-        // Canvas wider than video: scale by height, pillarbox sides
-        fgScaleY = videoAspect / canvasAspect;
+      const videoAspect  = this.video.videoWidth / this.video.videoHeight;
+      const aspectRatio  = canvasAspect > videoAspect
+        ? canvasAspect / videoAspect
+        : videoAspect / canvasAspect;
+
+      if (aspectRatio > 2.0) {
+        // Extreme mismatch (portrait canvas + landscape camera, or vice-versa).
+        // Use reduced zoom so more of the subject is visible, contain mode fills edges.
+        fgContain = true;
+        if (canvasAspect < videoAspect) {
+          // Portrait canvas + landscape video: crop to center 45% of landscape width
+          fgScaleX = 0.45;
+          fgScaleY = fgScaleX * (videoAspect / canvasAspect); // preserve aspect ratio
+        } else {
+          // Landscape canvas + portrait video: crop to center 45% of portrait height
+          fgScaleY = 0.45;
+          fgScaleX = fgScaleY * (canvasAspect / videoAspect);
+        }
       } else {
-        // Canvas taller than video: scale by width, letterbox top/bottom
-        fgScaleX = canvasAspect / videoAspect;
+        // Aspect ratios are close — use standard cover (fills canvas, clips one axis)
+        if (canvasAspect > videoAspect) {
+          fgScaleY = videoAspect / canvasAspect;
+        } else {
+          fgScaleX = canvasAspect / videoAspect;
+        }
       }
     }
 
-    gl.uniform1i(u.uFgContain, 0); // Contain mode off — always use cover
+    gl.uniform1i(u.uFgContain, fgContain ? 1 : 0);
     gl.uniform2f(u.uFgScale, fgScaleX, fgScaleY);
 
     let bgScaleX = 1.0;
