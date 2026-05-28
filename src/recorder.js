@@ -125,10 +125,34 @@ export class SystemCaptureControl {
       this.micStream = await navigator.mediaDevices.getUserMedia(constraints);
       this.activeMicId = micId;
       this.startMicMonitor();
+      // iOS routes audio output to the earpiece whenever mic capture is active.
+      // Playing a silent tone immediately after getUserMedia forces iOS Safari
+      // to use the loud speaker route instead of the earpiece.
+      this.forceSpeakerOutput();
       return true;
     } catch (err) {
       console.error('Failed to access microphone device:', err);
       return false;
+    }
+  }
+
+  // iOS Audio Routing Fix: play a near-silent tone through the AudioContext
+  // destination immediately after mic capture starts. This signals to iOS
+  // Safari's AVAudioSession that speaker output is desired, overriding the
+  // default earpiece routing that happens when PlayAndRecord mode is active.
+  forceSpeakerOutput() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const buffer = ctx.createBuffer(1, 1, ctx.sampleRate); // 1 sample of silence
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      source.start(0);
+      // Close context after a short delay — it has done its job
+      setTimeout(() => ctx.close(), 500);
+    } catch (e) {
+      // Non-critical: silently ignore if this trick isn't supported
+      console.log('Speaker output unlock skipped:', e);
     }
   }
 
@@ -220,6 +244,9 @@ export class SystemCaptureControl {
     let count = seconds;
     this.countdownNum.textContent = count;
     
+    // Play tick for the first displayed number immediately
+    this.playCountdownTick();
+    
     // Reset SVG radial circle dash offsets
     this.countdownRing.style.strokeDashoffset = '0';
 
@@ -233,6 +260,7 @@ export class SystemCaptureControl {
         this.countdownTimer = null;
         this.isPreRolling = false;
         this.countdownOverlay.style.display = 'none';
+        this.playCountdownGo(); // Final "Action!" sound
         onFinishedCallback();
       } else {
         this.countdownNum.textContent = count;
@@ -240,8 +268,67 @@ export class SystemCaptureControl {
         const percent = count / seconds;
         const offset = dashLength * (1 - percent);
         this.countdownRing.style.strokeDashoffset = offset;
+        this.playCountdownTick(); // Tick for each remaining second
       }
     }, interval);
+  }
+
+  // Synthesized countdown tick — sharp high-pitched click (880Hz)
+  // Each second of the countdown plays this so it feels like a real studio clock
+  playCountdownTick() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, ctx.currentTime); // High A note — classic countdown tick
+
+      // Sharp attack, very fast decay — makes it feel like a precise clock tick
+      gain.gain.setValueAtTime(0, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(0.6, ctx.currentTime + 0.005); // 5ms attack
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.12); // 120ms decay
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.12);
+
+      osc.onended = () => ctx.close();
+    } catch (e) {
+      console.log('Countdown tick audio skipped:', e);
+    }
+  }
+
+  // Synthesized "Go" chord — deeper, richer two-tone sound for the final action beat
+  // Uses 440Hz + 660Hz (A4 + E5 perfect fifth) for a satisfying, professional feel
+  playCountdownGo() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+      const playTone = (freq, volume, duration) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, ctx.currentTime);
+        gain.gain.setValueAtTime(0, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(volume, ctx.currentTime + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + duration);
+      };
+
+      playTone(440, 0.5, 0.5);  // A4 — warm base note
+      playTone(660, 0.4, 0.5);  // E5 — perfect fifth harmonic
+
+      // Close context after the chord finishes
+      setTimeout(() => ctx.close(), 700);
+    } catch (e) {
+      console.log('Countdown go audio skipped:', e);
+    }
   }
 
   cancelPreRoll() {
