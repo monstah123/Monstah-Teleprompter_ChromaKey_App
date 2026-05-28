@@ -348,46 +348,25 @@ export class WebGLCompositor {
     ];
     gl.uniform4fv(u.uSolidColor, solidNorm);
 
-    // Calculate foreground scale and contain mode.
-    // "Cover" is used when aspect ratios are similar (fills canvas, crops excess).
-    // "Contain" is used when they differ significantly — e.g. portrait canvas + landscape webcam
-    // would produce 3.16x cover zoom which looks way too close. Contain fits the video to the
-    // canvas width and lets the background fill the letterbox gaps, matching TikTok/Reels behavior.
-    let fgContain = false;
+    // Cover mode: fills canvas completely, crops excess on one axis.
+    // On iPhone held portrait, the camera returns a portrait stream (720x1280)
+    // so canvasAspect ≈ videoAspect → no zoom needed. This is the correct behavior.
     let fgScaleX = 1.0;
     let fgScaleY = 1.0;
 
     if (this.video.videoWidth > 0 && this.video.videoHeight > 0) {
       const canvasAspect = this.canvas.width / this.canvas.height;
       const videoAspect = this.video.videoWidth / this.video.videoHeight;
-      // Compute how much zoom cover would produce
-      const coverZoom = canvasAspect > videoAspect
-        ? canvasAspect / videoAspect
-        : videoAspect / canvasAspect;
-
-      if (coverZoom > 1.8) {
-        // Aspect ratios differ too much — switch to contain mode
-        fgContain = true;
-        if (canvasAspect > videoAspect) {
-          // Landscape canvas + portrait video → pillarbox (background fills sides)
-          fgScaleX = canvasAspect / videoAspect;
-          fgScaleY = 1.0;
-        } else {
-          // Portrait canvas + landscape video → letterbox (background fills top/bottom)
-          fgScaleX = 1.0;
-          fgScaleY = videoAspect / canvasAspect;
-        }
+      if (canvasAspect > videoAspect) {
+        // Canvas wider than video: scale by height, pillarbox sides
+        fgScaleY = videoAspect / canvasAspect;
       } else {
-        // Standard cover: fills canvas completely, crops excess on one axis
-        if (canvasAspect > videoAspect) {
-          fgScaleY = videoAspect / canvasAspect;
-        } else {
-          fgScaleX = canvasAspect / videoAspect;
-        }
+        // Canvas taller than video: scale by width, letterbox top/bottom
+        fgScaleX = canvasAspect / videoAspect;
       }
     }
 
-    gl.uniform1i(u.uFgContain, fgContain ? 1 : 0);
+    gl.uniform1i(u.uFgContain, 0); // Contain mode off — always use cover
     gl.uniform2f(u.uFgScale, fgScaleX, fgScaleY);
 
     let bgScaleX = 1.0;

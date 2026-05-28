@@ -203,12 +203,23 @@ body {
   transition: aspect-ratio 0.3s ease, max-height 0.3s ease, max-width 0.3s ease;
 }
 
-/* Portrait 9:16 mode: constrain by width so the tall container fits the workspace */
+/* Portrait 9:16 mode: size from height so aspect-ratio cleanly drives the width.
+   width:auto + height:80% means the container is as tall as 80% of the workspace,
+   and its width auto-calculates to exactly 9/16 of that height. */
 .monitor-container.portrait {
   aspect-ratio: 9/16;
-  max-height: 90%;
-  max-width: 45%; /* Keeps portrait box narrow so it fits without overflow */
   width: auto;
+  height: 80%;
+  max-height: 80%;
+}
+
+/* Inside a portrait container the teleprompter card must be centered rather than
+   using left:calc(50%-225px) — that offset goes negative in a narrow portrait box
+   and clips the card, making words wrap into single-character vertical columns. */
+.monitor-container.portrait .teleprompter-card {
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  max-width: 96% !important;
 }
 
 #compositor-canvas {
