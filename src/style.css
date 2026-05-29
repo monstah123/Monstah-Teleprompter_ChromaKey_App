@@ -1605,3 +1605,30 @@ body {
     gap: 8px;
   }
 }
+
+/* Instagram Reels Safe Zones HUD overlay guidelines */
+.hud-safe-line {
+  stroke: rgba(239, 68, 68, 0.5);
+  stroke-width: 0.5;
+  stroke-dasharray: 2, 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.hud-safe-line-side {
+  stroke: rgba(255, 255, 255, 0.18);
+  stroke-width: 0.3;
+  stroke-dasharray: 2, 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.hud-safe-shading {
+  fill: rgba(7, 7, 10, 0.4);
+}
+
+.hud-safe-text {
+  fill: rgba(239, 68, 68, 0.9);
+  font-size: 2px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  font-family: var(--font-tech);
+}

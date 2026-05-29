@@ -24,6 +24,7 @@ export class WebGLCompositor {
     this.keyColor = [0.0, 1.0, 0.0]; // Normal Green [R, G, B] normalized 0-1
     this.similarity = 0.35;
     this.smoothness = 0.15;
+    this.cameraZoom = 1.0; // Dynamic webcam framing zoom
 
     // Background State
     this.bgType = 'color'; // 'color', 'image', 'video'
@@ -72,6 +73,10 @@ export class WebGLCompositor {
 
   setSmoothness(val) {
     this.smoothness = val;
+  }
+
+  setCameraZoom(val) {
+    this.cameraZoom = val;
   }
 
   // Load custom background image
@@ -355,8 +360,8 @@ export class WebGLCompositor {
     //
     // When they DON'T match by more than 2× (e.g. landscape camera in portrait canvas):
     //   → pure cover zooms 3.16× and shows only the subject's HEAD.
-    //   → instead use center 45% of landscape width (≈2.2× zoom) so the person is
-    //     visible head-to-shoulders. The virtual background fills the small edge strips.
+    //   → instead use center 75% of landscape width (≈1.33× zoom) so the person is
+    //     visible head-to-chest, rather than neck-up. The virtual background fills the small edge strips.
     let fgContain = false;
     let fgScaleX = 1.0;
     let fgScaleY = 1.0;
@@ -368,27 +373,38 @@ export class WebGLCompositor {
         ? canvasAspect / videoAspect
         : videoAspect / canvasAspect;
 
+      let baseScaleX = 1.0;
+      let baseScaleY = 1.0;
+
       if (aspectRatio > 2.0) {
         // Extreme mismatch (portrait canvas + landscape camera, or vice-versa).
-        // Use reduced zoom so more of the subject is visible, contain mode fills edges.
-        fgContain = true;
+        // Default to a wider view (crop to center 75% of landscape width/height)
+        // so the subject is beautifully visible head-to-chest, rather than neck-up.
         if (canvasAspect < videoAspect) {
-          // Portrait canvas + landscape video: crop to center 45% of landscape width
-          fgScaleX = 0.45;
-          fgScaleY = fgScaleX * (videoAspect / canvasAspect); // preserve aspect ratio
+          // Portrait canvas + landscape video
+          baseScaleX = 0.75;
+          baseScaleY = baseScaleX * (videoAspect / canvasAspect); // preserve aspect ratio
         } else {
-          // Landscape canvas + portrait video: crop to center 45% of portrait height
-          fgScaleY = 0.45;
-          fgScaleX = fgScaleY * (canvasAspect / videoAspect);
+          // Landscape canvas + portrait video
+          baseScaleY = 0.75;
+          baseScaleX = baseScaleY * (canvasAspect / videoAspect);
         }
       } else {
         // Aspect ratios are close — use standard cover (fills canvas, clips one axis)
         if (canvasAspect > videoAspect) {
-          fgScaleY = videoAspect / canvasAspect;
+          baseScaleY = videoAspect / canvasAspect;
         } else {
-          fgScaleX = canvasAspect / videoAspect;
+          baseScaleX = canvasAspect / videoAspect;
         }
       }
+
+      // Apply dynamic camera zoom setting (higher values zoom in closer, lower values fit wider)
+      fgScaleX = baseScaleX / this.cameraZoom;
+      fgScaleY = baseScaleY / this.cameraZoom;
+
+      // Enable boundary containment if we are in extreme mismatch or if the zoom level
+      // pushes coordinates outside webcam bounds, preventing edge pixel stretching.
+      fgContain = (aspectRatio > 2.0 || fgScaleX > 1.0 || fgScaleY > 1.0);
     }
 
     gl.uniform1i(u.uFgContain, fgContain ? 1 : 0);

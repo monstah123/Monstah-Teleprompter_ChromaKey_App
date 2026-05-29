@@ -75,6 +75,19 @@ function adjustCanvasResolution() {
     container.classList.toggle('portrait', isVertical);
   }
 
+  // Toggle Reels Safe Zone controller row visibility based on active orientation
+  const safeZoneRow = document.getElementById('reels-safe-zone-row');
+  if (safeZoneRow) {
+    safeZoneRow.style.display = isVertical ? 'flex' : 'none';
+    if (!isVertical) {
+      // Force disable safe zones if switching back to landscape
+      const toggle = document.getElementById('reels-safe-zone-toggle');
+      if (toggle) toggle.checked = false;
+      const overlay = document.getElementById('hud-safe-zones');
+      if (overlay) overlay.style.display = 'none';
+    }
+  }
+
   return { w, h, isVertical };
 }
 
@@ -510,6 +523,35 @@ function initChromaKeyStudio() {
     // Remove presets active states
     preloadedContainer.querySelectorAll('.asset-card').forEach(c => c.classList.remove('active'));
   });
+
+  // Dynamic camera zoom/framing slider listener
+  const zoomSlider = document.getElementById('camera-zoom');
+  const zoomVal = document.getElementById('camera-zoom-val');
+  if (zoomSlider && zoomVal) {
+    zoomSlider.addEventListener('input', () => {
+      const val = parseFloat(zoomSlider.value);
+      compositor.setCameraZoom(val);
+      zoomVal.textContent = `${val.toFixed(1)}x`;
+    });
+  }
+
+  // Reels Safe Zone HUD Guidelines toggle listener
+  const safeZoneToggle = document.getElementById('reels-safe-zone-toggle');
+  const safeZoneOverlay = document.getElementById('hud-safe-zones');
+  if (safeZoneToggle && safeZoneOverlay) {
+    safeZoneToggle.addEventListener('change', () => {
+      const show = safeZoneToggle.checked;
+      safeZoneOverlay.style.display = show ? 'block' : 'none';
+      if (show) {
+        // Automatically make sure calibration HUD is visible too
+        const hudToggle = document.getElementById('hud-guidelines-toggle');
+        if (hudToggle && !hudToggle.checked) {
+          hudToggle.checked = true;
+          hud.setVisible(true);
+        }
+      }
+    });
+  }
 
   // Activate default background gradient
   const tempCanvas = document.createElement('canvas');
