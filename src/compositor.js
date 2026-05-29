@@ -24,7 +24,7 @@ export class WebGLCompositor {
     this.keyColor = [0.0, 1.0, 0.0]; // Normal Green [R, G, B] normalized 0-1
     this.similarity = 0.35;
     this.smoothness = 0.15;
-    this.cameraZoom = 1.0; // Dynamic webcam framing zoom
+    this.cameraZoom = 0.7; // Dynamic webcam framing zoom (default to 0.7x for a wider view)
 
     // Background State
     this.bgType = 'color'; // 'color', 'image', 'video'
@@ -378,15 +378,15 @@ export class WebGLCompositor {
 
       if (aspectRatio > 2.0) {
         // Extreme mismatch (portrait canvas + landscape camera, or vice-versa).
-        // Default to a wider view (crop to center 75% of landscape width/height)
-        // so the subject is beautifully visible head-to-chest, rather than neck-up.
+        // Default to a wider view (fitting 100% of camera width/height by default)
+        // so the subject is small and plenty of background is visible on the screen.
         if (canvasAspect < videoAspect) {
           // Portrait canvas + landscape video
-          baseScaleX = 0.75;
+          baseScaleX = 1.0;
           baseScaleY = baseScaleX * (videoAspect / canvasAspect); // preserve aspect ratio
         } else {
           // Landscape canvas + portrait video
-          baseScaleY = 0.75;
+          baseScaleY = 1.0;
           baseScaleX = baseScaleY * (canvasAspect / videoAspect);
         }
       } else {
