@@ -82,6 +82,21 @@ export class SystemCaptureControl {
 
     try {
       this.cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (err) {
+      console.warn('Failed to access camera with preferred constraints, trying fallback:', err);
+      try {
+        const fallbackConstraints = {
+          video: cameraId ? { deviceId: { exact: cameraId } } : { facingMode: 'user' },
+          audio: false
+        };
+        this.cameraStream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
+      } catch (fallbackErr) {
+        console.error('Camera fallback failed:', fallbackErr);
+        return false;
+      }
+    }
+
+    try {
       this.video.srcObject = this.cameraStream;
       
       // Explicitly play the video element to guarantee frames flow and readyState is satisfied across all browsers (especially Safari/Chrome on macOS)
@@ -100,7 +115,7 @@ export class SystemCaptureControl {
       }
       return true;
     } catch (err) {
-      console.error('Failed to access camera device:', err);
+      console.error('Failed to bind camera stream to video element:', err);
       return false;
     }
   }

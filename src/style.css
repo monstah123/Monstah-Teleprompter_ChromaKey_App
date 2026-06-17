@@ -222,7 +222,7 @@ body {
 .monitor-container.portrait {
   aspect-ratio: 9/16;
   width: auto;
-  height: calc(100% - 0px);
+  height: calc(100% - 96px);
   max-height: calc(100vh - var(--header-height) - 96px); /* 96px = status bar */
   max-width: 100%;
 }
@@ -1506,6 +1506,14 @@ body {
   .monitor-container {
     max-height: 55vh;
     overflow: visible; /* Prevent teleprompter card clipping on smaller aspect ratios */
+  }
+  
+  .monitor-container.portrait {
+    width: 100%;
+    max-width: 350px;
+    height: auto;
+    max-height: 55vh;
+    aspect-ratio: 9/16;
   }
 
   .quick-status-bar {
