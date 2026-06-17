@@ -126,35 +126,30 @@ export class WebGLCompositor {
     const vh = this.video.videoHeight;
     if (!vw || !vh) return;
 
-    const videoAspect = vw / vh;
+    const canvasAspect = cw / ch;
+    const videoAspect  = vw / vh;
 
-    // Target height based on cameraZoom
-    let drawH = ch * this.cameraZoom;
-    let drawW = drawH * videoAspect;
-
-    // Source crop geometry (default: full video frame)
+    // 1. Crop the source video to match the EXACT aspect ratio of the canvas (e.g. 9:16)
     let srcX = 0, srcY = 0, srcW = vw, srcH = vh;
-    let dstX, dstY, dstW, dstH;
-
-    if (drawW > cw) {
-      // Video wider than canvas (landscape cam in portrait canvas):
-      // crop the sides equally so webcam fills the full canvas width.
-      const cropRatio = cw / drawW;
-      srcW = vw * cropRatio;
+    if (videoAspect > canvasAspect) {
+      // Webcam is wider than canvas (landscape webcam in portrait canvas) -> crop width
+      srcW = vh * canvasAspect;
       srcX = (vw - srcW) / 2;
-      dstW = cw;
-      dstH = drawH;
     } else {
-      // Video fits within canvas width — center it horizontally
-      dstW = drawW;
-      dstH = drawH;
+      // Webcam is narrower than canvas (portrait webcam in landscape canvas) -> crop height
+      srcH = vw / canvasAspect;
+      srcY = (vh - srcH) / 2;
     }
 
-    // Vertical position: split remaining space by cameraPanY
-    dstX = (cw - dstW) / 2;
-    dstY = (ch - dstH) * this.cameraPanY;
+    // 2. Scale the destination bounds proportionally based on cameraZoom
+    const dstW = cw * this.cameraZoom;
+    const dstH = ch * this.cameraZoom;
 
-    // Mirror horizontally (natural selfie/teleprompter feel)
+    // 3. Center horizontally and pan vertically
+    const dstX = (cw - dstW) / 2;
+    const dstY = (ch - dstH) * this.cameraPanY;
+
+    // 4. Mirror horizontally (natural selfie/teleprompter feel)
     ctx.save();
     ctx.translate(cw, 0);
     ctx.scale(-1, 1);
