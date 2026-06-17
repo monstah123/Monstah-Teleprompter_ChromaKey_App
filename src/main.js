@@ -528,16 +528,28 @@ function initChromaKeyStudio() {
     preloadedContainer.querySelectorAll('.asset-card').forEach(c => c.classList.remove('active'));
   });
 
-  // Dynamic camera zoom/framing slider listener
-  const zoomSlider = document.getElementById('camera-zoom');
-  const zoomVal = document.getElementById('camera-zoom-val');
-  if (zoomSlider && zoomVal) {
-    zoomSlider.addEventListener('input', () => {
-      const val = parseFloat(zoomSlider.value);
-      compositor.setCameraZoom(val);
-      zoomVal.textContent = `${val.toFixed(1)}x`;
-    });
+  // ── Unified zoom handler — keeps pill, sidebar slider, and compositor in sync ──
+  const zoomSlider   = document.getElementById('camera-zoom');
+  const zoomVal      = document.getElementById('camera-zoom-val');
+  const pillSlider   = document.getElementById('zoom-pill-slider');
+  const pillLabel    = document.getElementById('zoom-pill-label');
+  const zoomInBtn    = document.getElementById('zoom-in-btn');
+  const zoomOutBtn   = document.getElementById('zoom-out-btn');
+  const ZOOM_MIN = 0.2, ZOOM_MAX = 1.5, ZOOM_STEP = 0.05;
+
+  function applyZoom(val) {
+    val = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, parseFloat(val.toFixed(2))));
+    compositor.setCameraZoom(val);
+    if (zoomSlider) zoomSlider.value = val;
+    if (zoomVal)    zoomVal.textContent = `${val.toFixed(2)}x`;
+    if (pillSlider) pillSlider.value = val;
+    if (pillLabel)  pillLabel.textContent = `${val.toFixed(2)}×`;
   }
+
+  if (zoomSlider) zoomSlider.addEventListener('input', () => applyZoom(parseFloat(zoomSlider.value)));
+  if (pillSlider) pillSlider.addEventListener('input', () => applyZoom(parseFloat(pillSlider.value)));
+  if (zoomInBtn)  zoomInBtn.addEventListener('click',  () => applyZoom(compositor.cameraZoom + ZOOM_STEP));
+  if (zoomOutBtn) zoomOutBtn.addEventListener('click',  () => applyZoom(compositor.cameraZoom - ZOOM_STEP));
 
   // Reels Safe Zone HUD Guidelines toggle listener
   const safeZoneToggle = document.getElementById('reels-safe-zone-toggle');
