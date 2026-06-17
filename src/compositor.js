@@ -2,6 +2,12 @@
  * WebGL Live Video Compositor
  * Performs real-time chroma-key extraction on GPU at 60 FPS
  * and blends webcam with customizable static or video backgrounds.
+ *
+ * Webcam Framing Architecture:
+ * The webcam is drawn onto a 2D "framing canvas" at the desired size and
+ * position (using cameraZoom + cameraPanY), then uploaded to WebGL as a
+ * texture. This bypasses fragile shader-based scale math that behaves
+ * differently across iOS/Android cameras (portrait vs landscape pixels).
  */
 export class WebGLCompositor {
   constructor(canvasElement, webcamVideoElement, backgroundVideoElement) {
@@ -24,7 +30,16 @@ export class WebGLCompositor {
     this.keyColor = [0.0, 1.0, 0.0]; // Normal Green [R, G, B] normalized 0-1
     this.similarity = 0.35;
     this.smoothness = 0.15;
-    this.cameraZoom = 0.47; // Default: shoulders + half-torso framing for 9:16 portrait
+
+    // Framing: cameraZoom = fraction of canvas HEIGHT the webcam fills (0.75 = 75%).
+    // cameraPanY = vertical position within remaining space: 0=top, 0.5=center, 1=bottom.
+    this.cameraZoom  = 0.75;  // Person fills 75% of canvas height
+    this.cameraPanY  = 0.20;  // 20% into the remaining space → ~5% top margin
+
+    // 2D framing canvas — webcam is drawn here at the right scale/position,
+    // then uploaded to WebGL. Avoids all shader-based scale complexity.
+    this.framingCanvas = document.createElement('canvas');
+    this.framingCtx    = this.framingCanvas.getContext('2d');
 
     // Background State
     this.bgType = 'color'; // 'color', 'image', 'video'
@@ -76,7 +91,76 @@ export class WebGLCompositor {
   }
 
   setCameraZoom(val) {
-    this.cameraZoom = val;
+    this.cameraZoom = Math.max(0.1, Math.min(2.0, val));
+  }
+
+  /**
+   * Draw the webcam onto the 2D framing canvas at the desired scale/position.
+   * This runs every render frame before uploading to WebGL.
+   *
+   * cameraZoom  = fraction of canvas HEIGHT the webcam occupies (e.g. 0.75 = 75%)
+   * cameraPanY  = where vertically the webcam sits in the remaining space
+   *               (0 = pushed to top, 0.5 = centered, 1 = pushed to bottom)
+   *
+   * Width: the webcam is always centered horizontally. If the video is wider
+   * than the canvas (e.g. landscape webcam in portrait canvas), it is cropped
+   * symmetrically on the sides — matching TikTok's cover-fill behaviour.
+   */
+  drawFramedWebcam() {
+    const fc  = this.framingCanvas;
+    const ctx = this.framingCtx;
+    const cw  = this.canvas.width;
+    const ch  = this.canvas.height;
+
+    // Keep framing canvas in sync with the main WebGL canvas dimensions
+    if (fc.width !== cw || fc.height !== ch) {
+      fc.width  = cw;
+      fc.height = ch;
+    }
+
+    // Always clear first — transparent areas tell WebGL shader to show background
+    ctx.clearRect(0, 0, cw, ch);
+
+    if (!this.video || this.video.readyState < this.video.HAVE_CURRENT_DATA) return;
+    const vw = this.video.videoWidth;
+    const vh = this.video.videoHeight;
+    if (!vw || !vh) return;
+
+    const videoAspect = vw / vh;
+
+    // Target height based on cameraZoom
+    let drawH = ch * this.cameraZoom;
+    let drawW = drawH * videoAspect;
+
+    // Source crop geometry (default: full video frame)
+    let srcX = 0, srcY = 0, srcW = vw, srcH = vh;
+    let dstX, dstY, dstW, dstH;
+
+    if (drawW > cw) {
+      // Video wider than canvas (landscape cam in portrait canvas):
+      // crop the sides equally so webcam fills the full canvas width.
+      const cropRatio = cw / drawW;
+      srcW = vw * cropRatio;
+      srcX = (vw - srcW) / 2;
+      dstW = cw;
+      dstH = drawH;
+    } else {
+      // Video fits within canvas width — center it horizontally
+      dstW = drawW;
+      dstH = drawH;
+    }
+
+    // Vertical position: split remaining space by cameraPanY
+    dstX = (cw - dstW) / 2;
+    dstY = (ch - dstH) * this.cameraPanY;
+
+    // Mirror horizontally (natural selfie/teleprompter feel)
+    ctx.save();
+    ctx.translate(cw, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(this.video, srcX, srcY, srcW, srcH,
+                  cw - dstX - dstW, dstY, dstW, dstH);
+    ctx.restore();
   }
 
   // Load custom background image
@@ -123,7 +207,8 @@ export class WebGLCompositor {
       }
     `;
 
-    // Chroma-Key Shader using YUV Color Space distance (Advanced lighting and shadow tolerant)
+    // Chroma-Key Shader — foreground is pre-framed by the 2D canvas;
+    // alpha=0 areas in the framing canvas are transparent, shader shows background there.
     const fsSource = `
       precision mediump float;
       varying vec2 vTexCoord;
@@ -135,13 +220,11 @@ export class WebGLCompositor {
       uniform float uSimilarity;
       uniform float uSmoothness;
       uniform bool uChromaKeyEnabled;
-      uniform bool uFgContain;   // Contain mode: show background outside video bounds (letterbox/pillarbox)
       uniform int uBgType;       // 0=Solid Color, 1=Image Texture, 2=Video Texture
       uniform vec4 uSolidColor;  // Solid background color normalized
-      uniform vec2 uFgScale;
       uniform vec2 uBgScale;
 
-      // Convert RGB to YUV for distance calculation
+      // Convert RGB to YUV for chroma distance (shadows/luminance tolerant)
       vec3 rgb2yuv(vec3 rgb) {
         float y = 0.299 * rgb.r + 0.587 * rgb.g + 0.114 * rgb.b;
         float u = -0.14713 * rgb.r - 0.28886 * rgb.g + 0.436 * rgb.b;
@@ -150,47 +233,36 @@ export class WebGLCompositor {
       }
 
       void main() {
-        // 1. Always compute background color first — needed for contain gaps and chroma blending
+        // 1. Background color (solid or texture)
         vec4 bgColor;
         if (uBgType == 0) {
           bgColor = uSolidColor;
         } else {
-          // Standard mapping for backgrounds (not mirrored, centered and scaled to cover aspect ratio)
           vec2 bgCoord = (vTexCoord - 0.5) * uBgScale + 0.5;
           bgColor = texture2D(uBackgroundTexture, bgCoord);
         }
 
-        // 2. Compute foreground texture coordinate (mirrored horizontally for natural presenting feel)
-        vec2 fgCoord = vec2(1.0 - vTexCoord.x, vTexCoord.y);
-        fgCoord = (fgCoord - 0.5) * uFgScale + 0.5;
+        // 2. Sample foreground — already framed and mirrored by 2D canvas
+        vec4 fgColor = texture2D(uForegroundTexture, vTexCoord);
 
-        // 3. Contain mode: when the canvas and video aspect ratios differ significantly
-        //    (e.g. portrait canvas + landscape webcam), texture coordinates go outside [0,1].
-        //    Instead of clamping to edge pixels (which looks wrong), output pure background.
-        //    This is the letterbox/pillarbox behavior used by TikTok and Reels.
-        if (uFgContain && (fgCoord.x < 0.0 || fgCoord.x > 1.0 || fgCoord.y < 0.0 || fgCoord.y > 1.0)) {
+        // 3. Transparent areas in the 2D framing canvas = show background
+        //    (these are the letterbox/pillarbox bands outside the webcam area)
+        if (fgColor.a < 0.01) {
           gl_FragColor = bgColor;
           return;
         }
 
-        // 4. Sample foreground camera texture
-        vec4 fgColor = texture2D(uForegroundTexture, clamp(fgCoord, 0.0, 1.0));
-
-        // 5. Without chroma key: output foreground directly
+        // 4. Without chroma key: output foreground directly
         if (!uChromaKeyEnabled) {
           gl_FragColor = fgColor;
           return;
         }
 
-        // 6. Chroma Key: distance in Chrominance (U,V) space — isolates color from shadows/luminance
-        vec3 fgYuv = rgb2yuv(fgColor.rgb);
+        // 5. Chroma Key in YUV space (colour distance, shadow tolerant)
+        vec3 fgYuv  = rgb2yuv(fgColor.rgb);
         vec3 keyYuv = rgb2yuv(uKeyColor);
         float chromaDist = distance(fgYuv.yz, keyYuv.yz);
-
-        // Compute alpha mask threshold with smoothstep softening
         float mask = smoothstep(uSimilarity, uSimilarity + uSmoothness, chromaDist);
-
-        // Mix foreground over background based on chroma mask
         gl_FragColor = mix(bgColor, fgColor, mask);
       }
     `;
@@ -233,22 +305,17 @@ export class WebGLCompositor {
     this.textures.background = this.createTexture();
 
     // 5. Cache all uniform and attribute locations once after program link.
-    // getUniformLocation/getAttribLocation are expensive GPU driver calls;
-    // calling them inside the render loop at 60fps wastes significant CPU,
-    // especially on older mobile chips like the iPhone X A11.
     gl.useProgram(this.program);
     this.attribs.aPosition  = gl.getAttribLocation(this.program, 'aPosition');
     this.attribs.aTexCoord  = gl.getAttribLocation(this.program, 'aTexCoord');
     this.uniforms.uForegroundTexture = gl.getUniformLocation(this.program, 'uForegroundTexture');
     this.uniforms.uBackgroundTexture = gl.getUniformLocation(this.program, 'uBackgroundTexture');
     this.uniforms.uChromaKeyEnabled  = gl.getUniformLocation(this.program, 'uChromaKeyEnabled');
-    this.uniforms.uFgContain         = gl.getUniformLocation(this.program, 'uFgContain');
     this.uniforms.uKeyColor          = gl.getUniformLocation(this.program, 'uKeyColor');
     this.uniforms.uSimilarity        = gl.getUniformLocation(this.program, 'uSimilarity');
     this.uniforms.uSmoothness        = gl.getUniformLocation(this.program, 'uSmoothness');
     this.uniforms.uBgType            = gl.getUniformLocation(this.program, 'uBgType');
     this.uniforms.uSolidColor        = gl.getUniformLocation(this.program, 'uSolidColor');
-    this.uniforms.uFgScale           = gl.getUniformLocation(this.program, 'uFgScale');
     this.uniforms.uBgScale           = gl.getUniformLocation(this.program, 'uBgScale');
   }
 
@@ -298,14 +365,13 @@ export class WebGLCompositor {
     if (!this.isRendering) return;
 
     const gl = this.gl;
-    const u = this.uniforms; // Cached uniform locations — no per-frame driver lookups
-    const a = this.attribs;  // Cached attribute locations
+    const u = this.uniforms;
+    const a = this.attribs;
 
     // Set Viewport and Clear
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-    // Load Program
     gl.useProgram(this.program);
 
     // Bind Position buffer
@@ -318,16 +384,16 @@ export class WebGLCompositor {
     gl.bindBuffer(gl.ARRAY_BUFFER, this.buffers.texCoord);
     gl.vertexAttribPointer(a.aTexCoord, 2, gl.FLOAT, false, 0, 0);
 
-    // Bind Foreground Texture (Webcam feed)
+    // ── Foreground: draw webcam to 2D framing canvas, then upload to GPU ──────
+    // The 2D canvas handles all zoom/pan/crop logic; WebGL just samples it.
+    this.drawFramedWebcam();
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.textures.foreground);
-    if (this.video.readyState >= this.video.HAVE_CURRENT_DATA) {
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.video);
-    }
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.framingCanvas);
     gl.uniform1i(u.uForegroundTexture, 0);
 
-    // Bind Background Texture
-    let typeVal = 0; // Solid Color
+    // ── Background Texture ────────────────────────────────────────────────────
+    let typeVal = 0;
     if (this.bgType === 'image' && this.bgImageLoaded && this.bgImage) {
       typeVal = 1;
       gl.activeTexture(gl.TEXTURE1);
@@ -341,10 +407,8 @@ export class WebGLCompositor {
       gl.uniform1i(u.uBackgroundTexture, 1);
     }
 
-    // Set Uniform Parameters
     gl.uniform1i(u.uBgType, typeVal);
-    
-    // Normalize Solid Color
+
     const solidNorm = [
       this.bgSolidColor[0] / 255,
       this.bgSolidColor[1] / 255,
@@ -353,85 +417,26 @@ export class WebGLCompositor {
     ];
     gl.uniform4fv(u.uSolidColor, solidNorm);
 
-    // Foreground scale: always use CSS object-fit:cover semantics so the webcam
-    // FILLS the canvas on the dominant axis, cropping the other axis as needed.
-    //
-    // Portrait canvas (9:16) + landscape webcam (16:9):
-    //   → cover fills by HEIGHT → crops left/right of webcam → subject is centred and fills frame.
-    //   → cameraZoom < 1.0 zooms out (wider view, virtual bg visible on sides)
-    //   → cameraZoom > 1.0 zooms in (tighter crop on subject)
-    //
-    // The old "extreme mismatch → contain" logic is removed; it caused the tiny
-    // letterboxed box seen in the screenshot.
-    let fgContain = false;
-    let fgScaleX = 1.0;
-    let fgScaleY = 1.0;
-
-    if (this.video.videoWidth > 0 && this.video.videoHeight > 0) {
-      const canvasAspect = this.canvas.width  / this.canvas.height;
-      const videoAspect  = this.video.videoWidth / this.video.videoHeight;
-
-      // Cover: find the scale factor needed so the video fills the canvas on
-      // the axis where it is the MOST constrained, then normalise so the other
-      // axis maps to its natural video proportion.
-      let baseScaleX, baseScaleY;
-      if (canvasAspect > videoAspect) {
-        // Canvas is wider than video → fill width, crop height.
-        baseScaleX = 1.0;
-        baseScaleY = videoAspect / canvasAspect;
-      } else {
-        // Canvas is taller than video (portrait canvas + landscape webcam is here)
-        // → fill height, crop width (left/right of webcam are cut).
-        baseScaleY = 1.0;
-        baseScaleX = canvasAspect / videoAspect;
-      }
-
-      // Apply camera zoom (< 1 = zoom out/wider, > 1 = zoom in/tighter).
-      fgScaleX = baseScaleX / this.cameraZoom;
-      fgScaleY = baseScaleY / this.cameraZoom;
-
-      // Contain guard: only show background for out-of-bounds texels when the
-      // user has zoomed out enough that the webcam frame edge is visible.
-      fgContain = (fgScaleX > 1.0 || fgScaleY > 1.0);
-    }
-
-    gl.uniform1i(u.uFgContain, fgContain ? 1 : 0);
-    gl.uniform2f(u.uFgScale, fgScaleX, fgScaleY);
-
-    let bgScaleX = 1.0;
-    let bgScaleY = 1.0;
-    if (this.bgType === 'image' && this.bgImage && this.bgImage.width > 0 && this.bgImage.height > 0) {
-      const canvasAspect = this.canvas.width / this.canvas.height;
-      const imageAspect = this.bgImage.width / this.bgImage.height;
-      if (canvasAspect > imageAspect) {
-        // Crop vertically
-        bgScaleY = imageAspect / canvasAspect;
-      } else {
-        // Crop horizontally
-        bgScaleX = canvasAspect / imageAspect;
-      }
-    } else if (this.bgType === 'video' && this.bgVideo && this.bgVideo.videoWidth > 0 && this.bgVideo.videoHeight > 0) {
-      const canvasAspect = this.canvas.width / this.canvas.height;
-      const bgVideoAspect = this.bgVideo.videoWidth / this.bgVideo.videoHeight;
-      if (canvasAspect > bgVideoAspect) {
-        // Crop vertically
-        bgScaleY = bgVideoAspect / canvasAspect;
-      } else {
-        // Crop horizontally
-        bgScaleX = canvasAspect / bgVideoAspect;
-      }
+    // ── Background scale (cover-fill background image/video to canvas) ────────
+    let bgScaleX = 1.0, bgScaleY = 1.0;
+    if (this.bgType === 'image' && this.bgImage?.width > 0 && this.bgImage?.height > 0) {
+      const ca = this.canvas.width / this.canvas.height;
+      const ia = this.bgImage.width / this.bgImage.height;
+      if (ca > ia) { bgScaleY = ia / ca; } else { bgScaleX = ca / ia; }
+    } else if (this.bgType === 'video' && this.bgVideo?.videoWidth > 0 && this.bgVideo?.videoHeight > 0) {
+      const ca = this.canvas.width / this.canvas.height;
+      const va = this.bgVideo.videoWidth / this.bgVideo.videoHeight;
+      if (ca > va) { bgScaleY = va / ca; } else { bgScaleX = ca / va; }
     }
     gl.uniform2f(u.uBgScale, bgScaleX, bgScaleY);
 
-    // Chroma Uniforms
+    // ── Chroma uniforms ───────────────────────────────────────────────────────
     gl.uniform1i(u.uChromaKeyEnabled, this.chromaKeyEnabled ? 1 : 0);
     gl.uniform3fv(u.uKeyColor, this.keyColor);
     gl.uniform1f(u.uSimilarity, this.similarity);
     gl.uniform1f(u.uSmoothness, this.smoothness);
 
-    // Draw full-screen Quad
     gl.drawArrays(gl.TRIANGLES, 0, 6);
-
     requestAnimationFrame(() => this.render());
   }
 

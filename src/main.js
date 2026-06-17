@@ -13,10 +13,10 @@ let recorder;
 let speechTracker;
 let hud;
 
-// Portrait default zoom — shows full shoulders + half torso in 9:16 frame.
-// Exposed at module level so adjustCanvasResolution() can apply it immediately
-// on format change (before the user touches any slider).
-const PORTRAIT_ZOOM = 0.47;
+// Portrait default zoom — fraction of canvas HEIGHT that the webcam occupies.
+// 0.75 = person fills 75% of height, background visible in remaining 25%.
+// Exposed at module level so adjustCanvasResolution() can apply it on format change.
+const PORTRAIT_ZOOM = 0.75;
 let _applyZoom = null; // set by initChromaKeyStudio once UI elements exist
 
 // Document Load Init
