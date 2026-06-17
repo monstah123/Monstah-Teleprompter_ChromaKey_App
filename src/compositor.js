@@ -33,7 +33,7 @@ export class WebGLCompositor {
 
     // Framing: cameraZoom = fraction of canvas HEIGHT the webcam fills (0.75 = 75%).
     // cameraPanY = vertical position within remaining space: 0=top, 0.5=center, 1=bottom.
-    this.cameraZoom  = 0.48;  // Person fills 48% of canvas height
+    this.cameraZoom  = 0.85;  // Person fills 85% of canvas width/height
     this.cameraPanY  = 0.20;  // 20% into the remaining space → ~5% top margin
 
     // 2D framing canvas — webcam is drawn here at the right scale/position,
@@ -129,21 +129,20 @@ export class WebGLCompositor {
     const canvasAspect = cw / ch;
     const videoAspect  = vw / vh;
 
-    // 1. Crop the source video to match the EXACT aspect ratio of the canvas (e.g. 9:16)
-    let srcX = 0, srcY = 0, srcW = vw, srcH = vh;
+    // 1. Source geometry: always use the FULL video frame (no crop at source)
+    const srcX = 0, srcY = 0, srcW = vw, srcH = vh;
+    
+    // 2. Destination geometry: fit the video within the zoom boundaries (Contain semantics)
+    let dstW, dstH;
     if (videoAspect > canvasAspect) {
-      // Webcam is wider than canvas (landscape webcam in portrait canvas) -> crop width
-      srcW = vh * canvasAspect;
-      srcX = (vw - srcW) / 2;
+      // Video is wider than canvas (landscape camera in portrait canvas) -> fit width
+      dstW = cw * this.cameraZoom;
+      dstH = dstW / videoAspect;
     } else {
-      // Webcam is narrower than canvas (portrait webcam in landscape canvas) -> crop height
-      srcH = vw / canvasAspect;
-      srcY = (vh - srcH) / 2;
+      // Video is narrower than canvas (portrait camera in landscape canvas) -> fit height
+      dstH = ch * this.cameraZoom;
+      dstW = dstH * videoAspect;
     }
-
-    // 2. Scale the destination bounds proportionally based on cameraZoom
-    const dstW = cw * this.cameraZoom;
-    const dstH = ch * this.cameraZoom;
 
     // 3. Center horizontally and pan vertically
     const dstX = (cw - dstW) / 2;

@@ -61,19 +61,23 @@ export class SystemCaptureControl {
       this.cameraStream.getTracks().forEach(track => track.stop());
     }
 
-    // Request portrait-oriented dimensions when in 9:16 mode so iOS
-    // provides the stream in the correct orientation without a 90° rotation
-    const vidConstraints = cameraId ? {
-      deviceId: { exact: cameraId },
-      width:  { ideal: portrait ? 720  : 1280 },
-      height: { ideal: portrait ? 1280 : 720  },
-      aspectRatio: { ideal: portrait ? 0.5625 : 1.777777778 }
-    } : {
-      facingMode: 'user',
-      width:  { ideal: portrait ? 720  : 1280 },
-      height: { ideal: portrait ? 1280 : 720  },
-      aspectRatio: { ideal: portrait ? 0.5625 : 1.777777778 }
-    };
+    // Request portrait-oriented dimensions on desktop, but on mobile devices (like iOS)
+    // request simplified constraints so the system returns the native wide-angle portrait stream
+    const vidConstraints = this.isMobileDevice ? (
+      cameraId ? { deviceId: { exact: cameraId } } : { facingMode: 'user' }
+    ) : (
+      cameraId ? {
+        deviceId: { exact: cameraId },
+        width:  { ideal: portrait ? 720  : 1280 },
+        height: { ideal: portrait ? 1280 : 720  },
+        aspectRatio: { ideal: portrait ? 0.5625 : 1.777777778 }
+      } : {
+        facingMode: 'user',
+        width:  { ideal: portrait ? 720  : 1280 },
+        height: { ideal: portrait ? 1280 : 720  },
+        aspectRatio: { ideal: portrait ? 0.5625 : 1.777777778 }
+      }
+    );
 
     const constraints = {
       video: vidConstraints,
