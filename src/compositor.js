@@ -33,7 +33,7 @@ export class WebGLCompositor {
 
     // Framing: cameraZoom = fraction of canvas HEIGHT the webcam fills (0.75 = 75%).
     // cameraPanY = vertical position within remaining space: 0=top, 0.5=center, 1=bottom.
-    this.cameraZoom  = 0.75;  // Person fills 75% of canvas height
+    this.cameraZoom  = 0.48;  // Person fills 48% of canvas height
     this.cameraPanY  = 0.20;  // 20% into the remaining space → ~5% top margin
 
     // 2D framing canvas — webcam is drawn here at the right scale/position,

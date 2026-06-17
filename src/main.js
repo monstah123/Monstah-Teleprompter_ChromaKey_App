@@ -16,7 +16,7 @@ let hud;
 // Portrait default zoom — fraction of canvas HEIGHT that the webcam occupies.
 // 0.75 = person fills 75% of height, background visible in remaining 25%.
 // Exposed at module level so adjustCanvasResolution() can apply it on format change.
-const PORTRAIT_ZOOM = 0.75;
+const PORTRAIT_ZOOM = 0.48;
 let _applyZoom = null; // set by initChromaKeyStudio once UI elements exist
 
 // Document Load Init
