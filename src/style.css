@@ -183,7 +183,18 @@ body {
   padding: 20px;
   overflow: hidden;
   justify-content: center;
+  align-items: center; /* Always center container horizontally */
   position: relative;
+}
+
+/* Monitor area changes layout when portrait mode is active —
+   in portrait the workspace acts as a centering column so the narrow
+   9:16 container is obviously centered with equal padding on both sides,
+   rather than left-aligned taking up 100% of the width. */
+.monitor-workspace.portrait-mode {
+  flex-direction: column;
+  justify-content: center;
+  padding: 12px;
 }
 
 .monitor-container {
@@ -203,14 +214,17 @@ body {
   transition: aspect-ratio 0.3s ease, max-height 0.3s ease, max-width 0.3s ease;
 }
 
-/* Portrait 9:16 mode: size from height so aspect-ratio cleanly drives the width.
-   width:auto + height:80% means the container is as tall as 80% of the workspace,
-   and its width auto-calculates to exactly 9/16 of that height. */
+/* Portrait 9:16 mode:
+   - Height drives the size: fill as much vertical space as possible (calc avoids
+     the quick-status-bar below from being pushed off screen).
+   - Width auto-calculates from 9/16 aspect-ratio so there's no letterboxing.
+   - max-width guard keeps it from overflowing on very wide monitors. */
 .monitor-container.portrait {
   aspect-ratio: 9/16;
   width: auto;
-  height: 80%;
-  max-height: 80%;
+  height: calc(100% - 0px);
+  max-height: calc(100vh - var(--header-height) - 96px); /* 96px = status bar */
+  max-width: 100%;
 }
 
 /* Inside a portrait container the teleprompter card must be centered rather than
@@ -228,6 +242,7 @@ body {
   object-fit: cover;
   border-radius: 12px;
   z-index: 1;
+  display: block; /* Remove inline baseline gap */
 }
 
 /* 4. Concentric HUD overlay */

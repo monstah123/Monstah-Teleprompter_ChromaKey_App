@@ -70,9 +70,13 @@ function adjustCanvasResolution() {
 
   // Synchronize dynamic preview container aspect-ratio
   const container = document.getElementById('monitor-container');
+  const workspace = container?.closest('.monitor-workspace');
   if (container) {
     container.style.aspectRatio = `${w}/${h}`;
     container.classList.toggle('portrait', isVertical);
+  }
+  if (workspace) {
+    workspace.classList.toggle('portrait-mode', isVertical);
   }
 
   // Toggle Reels Safe Zone controller row visibility based on active orientation

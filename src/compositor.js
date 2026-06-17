@@ -24,7 +24,7 @@ export class WebGLCompositor {
     this.keyColor = [0.0, 1.0, 0.0]; // Normal Green [R, G, B] normalized 0-1
     this.similarity = 0.35;
     this.smoothness = 0.15;
-    this.cameraZoom = 0.7; // Dynamic webcam framing zoom (default to 0.7x for a wider view)
+    this.cameraZoom = 1.0; // Default to natural cover fill (1.0 = camera fills canvas perfectly)
 
     // Background State
     this.bgType = 'color'; // 'color', 'image', 'video'
@@ -353,58 +353,46 @@ export class WebGLCompositor {
     ];
     gl.uniform4fv(u.uSolidColor, solidNorm);
 
-    // Smart foreground scale calculation.
+    // Foreground scale: always use CSS object-fit:cover semantics so the webcam
+    // FILLS the canvas on the dominant axis, cropping the other axis as needed.
     //
-    // When canvas and video aspect ratios MATCH (e.g. both 9:16 on iPhone in portrait):
-    //   → plain cover, fgScale ≈ (1.0, 1.0), no zoom at all. Perfect fill.
+    // Portrait canvas (9:16) + landscape webcam (16:9):
+    //   → cover fills by HEIGHT → crops left/right of webcam → subject is centred and fills frame.
+    //   → cameraZoom < 1.0 zooms out (wider view, virtual bg visible on sides)
+    //   → cameraZoom > 1.0 zooms in (tighter crop on subject)
     //
-    // When they DON'T match by more than 2× (e.g. landscape camera in portrait canvas):
-    //   → pure cover zooms 3.16× and shows only the subject's HEAD.
-    //   → instead use center 75% of landscape width (≈1.33× zoom) so the person is
-    //     visible head-to-chest, rather than neck-up. The virtual background fills the small edge strips.
+    // The old "extreme mismatch → contain" logic is removed; it caused the tiny
+    // letterboxed box seen in the screenshot.
     let fgContain = false;
     let fgScaleX = 1.0;
     let fgScaleY = 1.0;
 
     if (this.video.videoWidth > 0 && this.video.videoHeight > 0) {
-      const canvasAspect = this.canvas.width / this.canvas.height;
+      const canvasAspect = this.canvas.width  / this.canvas.height;
       const videoAspect  = this.video.videoWidth / this.video.videoHeight;
-      const aspectRatio  = canvasAspect > videoAspect
-        ? canvasAspect / videoAspect
-        : videoAspect / canvasAspect;
 
-      let baseScaleX = 1.0;
-      let baseScaleY = 1.0;
-
-      if (aspectRatio > 2.0) {
-        // Extreme mismatch (portrait canvas + landscape camera, or vice-versa).
-        // Default to a wider view (fitting 100% of camera width/height by default)
-        // so the subject is small and plenty of background is visible on the screen.
-        if (canvasAspect < videoAspect) {
-          // Portrait canvas + landscape video
-          baseScaleX = 1.0;
-          baseScaleY = baseScaleX * (videoAspect / canvasAspect); // preserve aspect ratio
-        } else {
-          // Landscape canvas + portrait video
-          baseScaleY = 1.0;
-          baseScaleX = baseScaleY * (canvasAspect / videoAspect);
-        }
+      // Cover: find the scale factor needed so the video fills the canvas on
+      // the axis where it is the MOST constrained, then normalise so the other
+      // axis maps to its natural video proportion.
+      let baseScaleX, baseScaleY;
+      if (canvasAspect > videoAspect) {
+        // Canvas is wider than video → fill width, crop height.
+        baseScaleX = 1.0;
+        baseScaleY = videoAspect / canvasAspect;
       } else {
-        // Aspect ratios are close — use standard cover (fills canvas, clips one axis)
-        if (canvasAspect > videoAspect) {
-          baseScaleY = videoAspect / canvasAspect;
-        } else {
-          baseScaleX = canvasAspect / videoAspect;
-        }
+        // Canvas is taller than video (portrait canvas + landscape webcam is here)
+        // → fill height, crop width (left/right of webcam are cut).
+        baseScaleY = 1.0;
+        baseScaleX = canvasAspect / videoAspect;
       }
 
-      // Apply dynamic camera zoom setting (higher values zoom in closer, lower values fit wider)
+      // Apply camera zoom (< 1 = zoom out/wider, > 1 = zoom in/tighter).
       fgScaleX = baseScaleX / this.cameraZoom;
       fgScaleY = baseScaleY / this.cameraZoom;
 
-      // Enable boundary containment if we are in extreme mismatch or if the zoom level
-      // pushes coordinates outside webcam bounds, preventing edge pixel stretching.
-      fgContain = (aspectRatio > 2.0 || fgScaleX > 1.0 || fgScaleY > 1.0);
+      // Contain guard: only show background for out-of-bounds texels when the
+      // user has zoomed out enough that the webcam frame edge is visible.
+      fgContain = (fgScaleX > 1.0 || fgScaleY > 1.0);
     }
 
     gl.uniform1i(u.uFgContain, fgContain ? 1 : 0);
