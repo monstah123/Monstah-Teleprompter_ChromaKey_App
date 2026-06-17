@@ -24,7 +24,7 @@ export class WebGLCompositor {
     this.keyColor = [0.0, 1.0, 0.0]; // Normal Green [R, G, B] normalized 0-1
     this.similarity = 0.35;
     this.smoothness = 0.15;
-    this.cameraZoom = 0.45; // Default: wide framing — shows more background around subject
+    this.cameraZoom = 0.47; // Default: shoulders + half-torso framing for 9:16 portrait
 
     // Background State
     this.bgType = 'color'; // 'color', 'image', 'video'

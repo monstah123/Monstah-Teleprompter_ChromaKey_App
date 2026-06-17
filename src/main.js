@@ -13,6 +13,12 @@ let recorder;
 let speechTracker;
 let hud;
 
+// Portrait default zoom — shows full shoulders + half torso in 9:16 frame.
+// Exposed at module level so adjustCanvasResolution() can apply it immediately
+// on format change (before the user touches any slider).
+const PORTRAIT_ZOOM = 0.47;
+let _applyZoom = null; // set by initChromaKeyStudio once UI elements exist
+
 // Document Load Init
 window.addEventListener('DOMContentLoaded', async () => {
   // 1. Grab DOM Elements
@@ -90,6 +96,16 @@ function adjustCanvasResolution() {
       const overlay = document.getElementById('hud-safe-zones');
       if (overlay) overlay.style.display = 'none';
     }
+  }
+
+  // When switching to portrait, force-apply the default portrait framing zoom
+  // immediately so the compositor renders the correct framing without waiting
+  // for the user to interact with any slider.
+  if (isVertical && _applyZoom) {
+    _applyZoom(PORTRAIT_ZOOM);
+  } else if (isVertical && compositor) {
+    // Fallback before initChromaKeyStudio runs
+    compositor.setCameraZoom(PORTRAIT_ZOOM);
   }
 
   return { w, h, isVertical };
@@ -550,6 +566,11 @@ function initChromaKeyStudio() {
   if (pillSlider) pillSlider.addEventListener('input', () => applyZoom(parseFloat(pillSlider.value)));
   if (zoomInBtn)  zoomInBtn.addEventListener('click',  () => applyZoom(compositor.cameraZoom + ZOOM_STEP));
   if (zoomOutBtn) zoomOutBtn.addEventListener('click',  () => applyZoom(compositor.cameraZoom - ZOOM_STEP));
+
+  // Expose applyZoom at module level so format-change handler can call it,
+  // then immediately force-apply the portrait zoom on startup.
+  _applyZoom = applyZoom;
+  applyZoom(PORTRAIT_ZOOM); // ← THIS is the missing call that was never happening on load
 
   // Reels Safe Zone HUD Guidelines toggle listener
   const safeZoneToggle = document.getElementById('reels-safe-zone-toggle');
