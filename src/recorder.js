@@ -425,7 +425,7 @@ export class SystemCaptureControl {
       if (MediaRecorder.isTypeSupported(type)) {
         options = { 
           mimeType: type,
-          videoBitsPerSecond: 2500000, // 2.5 Mbps is highly optimal for 720p/1080p real-time encoding
+          videoBitsPerSecond: this.isMobileDevice ? 1500000 : 2500000, // 1.5 Mbps for mobile, 2.5 Mbps for desktop
           audioBitsPerSecond: 128000   // 128 kbps pristine audio
         };
         break;

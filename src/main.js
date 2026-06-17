@@ -66,8 +66,21 @@ function adjustCanvasResolution() {
   const formatVal = document.getElementById('recording-format')?.value || '1280x720:16:9';
   // Value format: "WxH:AR" e.g. "1080x1920:9:16"
   const parts = formatVal.split(':');
-  const [w, h] = parts[0].split('x').map(Number);
+  let [w, h] = parts[0].split('x').map(Number);
   const isVertical = parts[1] === '9' && parts[2] === '16'; // "9:16" → parts[1]=9, parts[2]=16
+
+  // Mobile performance optimization: cap resolution at 720p (720x1280 or 1280x720) 
+  // to prevent iPhone/Android thermal throttling and encoder freezes.
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  if (isMobile) {
+    if (isVertical && (w > 720 || h > 1280)) {
+      w = 720;
+      h = 1280;
+    } else if (!isVertical && (w > 1280 || h > 720)) {
+      w = 1280;
+      h = 720;
+    }
+  }
 
   if (compositor && compositor.canvas) {
     compositor.canvas.width = w;
