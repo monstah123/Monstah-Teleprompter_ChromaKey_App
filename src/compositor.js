@@ -24,7 +24,7 @@ export class WebGLCompositor {
     this.keyColor = [0.0, 1.0, 0.0]; // Normal Green [R, G, B] normalized 0-1
     this.similarity = 0.35;
     this.smoothness = 0.15;
-    this.cameraZoom = 1.0; // Default to natural cover fill (1.0 = camera fills canvas perfectly)
+    this.cameraZoom = 0.6; // Default: zoomed out enough to show natural head-to-chest framing
 
     // Background State
     this.bgType = 'color'; // 'color', 'image', 'video'
