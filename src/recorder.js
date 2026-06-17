@@ -374,11 +374,21 @@ export class SystemCaptureControl {
     
     this.recordedChunks = [];
     
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent) || isIOS;
+    
     // Capture canvas isolated compositor frames (excluding teleprompter DOM layers)
     // Use 24fps on mobile to reduce encoder pressure on older chips (iPhone X / A11)
     // 30fps is used on desktop where hardware can handle it without thermal throttling
     const captureRate = this.isMobileDevice ? 24 : 30;
-    const canvasStream = this.canvas.captureStream(captureRate); // Matches webcam frame rate to reduce CPU encoding load
+    
+    // WebKit/Safari has a critical bug where passing a frame rate argument to captureStream()
+    // causes the video track to lock up or freeze (while audio continues).
+    // Omitting the parameter forces Safari to capture frames dynamically on canvas paint events,
+    // which bypasses this WebKit timer-based bug.
+    const canvasStream = isSafari 
+      ? this.canvas.captureStream() 
+      : this.canvas.captureStream(captureRate);
     
     // hard-lock camera frames with microphone tracks into a synchronized stream
     const combinedTracks = [];
@@ -392,9 +402,6 @@ export class SystemCaptureControl {
 
     // MediaRecorder mime types matching - supports WebM on Chrome/Firefox and native MP4 on iOS/Safari
     let options = {};
-    
-    // Check Chrome / Firefox vs Safari compatibility to avoid encoder starvation/crash (e.g. Chrome lacking AAC encoder)
-    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
     const candidateTypes = [];
     
     if (isSafari) {
