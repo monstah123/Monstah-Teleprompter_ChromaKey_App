@@ -17,7 +17,7 @@ export class TeleprompterEngine {
     this.lastFrameTime = 0;
 
     // Typography Settings
-    this.fontSize = 28;
+    this.fontSize = 22;
     this.padding = 24;
     this.backdropOpacity = 0.65;
     this.fontFamily = "'Outfit', sans-serif";

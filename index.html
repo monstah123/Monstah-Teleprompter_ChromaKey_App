@@ -107,12 +107,19 @@
               
               <!-- Simple quick play bar on the card -->
               <div class="card-play-controls">
-                <button class="card-ctrl-btn" id="card-play-btn"><i data-lucide="play"></i></button>
-                <button class="card-ctrl-btn" id="card-rewind-btn"><i data-lucide="rotate-ccw"></i></button>
-                <button class="card-ctrl-btn" id="card-mode-toggle-btn" title="Toggle Auto/Manual Scroll Mode">
-                  <i data-lucide="zap" id="card-mode-icon"></i> <span id="card-mode-text">Auto</span>
-                </button>
-                <span class="card-speed-label" id="card-speed-indicator">WPM: 120</span>
+                <div class="card-ctrl-group">
+                  <button class="card-ctrl-btn" id="card-play-btn" title="Play/Pause"><i data-lucide="play"></i></button>
+                  <button class="card-ctrl-btn" id="card-rewind-btn" title="Rewind"><i data-lucide="rotate-ccw"></i></button>
+                  <button class="card-ctrl-btn" id="card-mode-toggle-btn" title="Toggle Auto/Manual Scroll Mode">
+                    <i data-lucide="zap" id="card-mode-icon"></i> <span id="card-mode-text">Auto</span>
+                  </button>
+                </div>
+                <div class="card-ctrl-group">
+                  <span class="card-speed-label" id="card-speed-indicator">WPM: 120</span>
+                  <div class="divider-vertical"></div>
+                  <button class="card-ctrl-btn" id="card-font-dec-btn" title="Decrease Font Size"><i data-lucide="type"></i>−</button>
+                  <button class="card-ctrl-btn" id="card-font-inc-btn" title="Increase Font Size"><i data-lucide="type"></i>+</button>
+                </div>
               </div>
             </div>
 
@@ -377,9 +384,9 @@
                 <div class="form-group">
                   <div class="slider-label-row">
                     <label for="font-scale">Font Size:</label>
-                    <span class="slider-label-val" id="font-scale-val">28px</span>
+                    <span class="slider-label-val" id="font-scale-val">22px</span>
                   </div>
-                  <input type="range" id="font-scale" min="16" max="64" value="28" class="slider-control" />
+                  <input type="range" id="font-scale" min="12" max="72" value="22" class="slider-control" />
                 </div>
 
                 <div class="form-group">

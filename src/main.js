@@ -242,6 +242,8 @@ function initTeleprompterSync() {
 
   const sizeSlider = document.getElementById('font-scale');
   const sizeVal = document.getElementById('font-scale-val');
+  const cardFontDecBtn = document.getElementById('card-font-dec-btn');
+  const cardFontIncBtn = document.getElementById('card-font-inc-btn');
 
   const opacitySlider = document.getElementById('card-opacity');
   const opacityVal = document.getElementById('card-opacity-val');
@@ -347,12 +349,27 @@ function initTeleprompterSync() {
     quickSpeedVal.textContent = `${wpm} WPM`;
   });
 
-  // Style slider changes
-  sizeSlider.addEventListener('input', () => {
-    const val = sizeSlider.value;
+  // Style slider and card font size controls
+  const FONT_MIN = 12, FONT_MAX = 72, FONT_STEP = 2;
+  function applyFontSize(val) {
+    val = Math.max(FONT_MIN, Math.min(FONT_MAX, parseInt(val, 10)));
     teleprompter.setFontSize(val);
-    sizeVal.textContent = `${val}px`;
-  });
+    if (sizeSlider) sizeSlider.value = val;
+    if (sizeVal)    sizeVal.textContent = `${val}px`;
+  }
+
+  if (sizeSlider) {
+    sizeSlider.addEventListener('input', () => applyFontSize(parseInt(sizeSlider.value, 10)));
+  }
+  if (cardFontDecBtn) {
+    cardFontDecBtn.addEventListener('click', () => applyFontSize(teleprompter.fontSize - FONT_STEP));
+  }
+  if (cardFontIncBtn) {
+    cardFontIncBtn.addEventListener('click', () => applyFontSize(teleprompter.fontSize + FONT_STEP));
+  }
+  
+  // Set default initial font size
+  applyFontSize(22);
 
   opacitySlider.addEventListener('input', () => {
     const val = opacitySlider.value;
